@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsqpcpu.a CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o
+/usr/bin/ranlib libsqpcpu.a
