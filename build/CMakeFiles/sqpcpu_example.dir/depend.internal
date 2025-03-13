@@ -3,7 +3,7 @@
 
 CMakeFiles/sqpcpu_example.dir/examples/main.cpp.o
  ../include/sqpcpu/thneed.hpp
- /home/a2rlab/Documents/emre/sbx/sqpcpu/examples/main.cpp
+ /home/a2rlab/Documents/emre/sqpcpu/examples/main.cpp
  /home/a2rlab/miniconda3/include/OsqpEigen/Compat.hpp
  /home/a2rlab/miniconda3/include/OsqpEigen/Constants.hpp
  /home/a2rlab/miniconda3/include/OsqpEigen/Data.hpp

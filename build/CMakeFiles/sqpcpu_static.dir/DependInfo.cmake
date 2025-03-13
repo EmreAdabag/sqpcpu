@@ -4,7 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/home/a2rlab/Documents/emre/sbx/sqpcpu/src/thneed.cpp" "/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o"
+  "/home/a2rlab/Documents/emre/sqpcpu/src/thneed.cpp" "/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o"
   )
 set(CMAKE_CXX_COMPILER_ID "GNU")
 

@@ -6,21 +6,21 @@
 
 #IncludeRegexTransform: 
 
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/thneed.cpp
+/home/a2rlab/Documents/emre/sqpcpu/src/thneed.cpp
 pinocchio/parsers/urdf.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/parsers/urdf.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/parsers/urdf.hpp
 pinocchio/algorithm/joint-configuration.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/joint-configuration.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/joint-configuration.hpp
 pinocchio/algorithm/kinematics.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/kinematics.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/kinematics.hpp
 pinocchio/algorithm/aba.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/aba.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/aba.hpp
 pinocchio/algorithm/aba-derivatives.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/aba-derivatives.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/aba-derivatives.hpp
 pinocchio/algorithm/joint-configuration.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/joint-configuration.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/joint-configuration.hpp
 pinocchio/algorithm/jacobian.hpp
-/home/a2rlab/Documents/emre/sbx/sqpcpu/src/pinocchio/algorithm/jacobian.hpp
+/home/a2rlab/Documents/emre/sqpcpu/src/pinocchio/algorithm/jacobian.hpp
 OsqpEigen/OsqpEigen.h
 -
 iostream

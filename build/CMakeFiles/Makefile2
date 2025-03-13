@@ -63,10 +63,10 @@ RM = /home/a2rlab/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/a2rlab/Documents/emre/sbx/sqpcpu
+CMAKE_SOURCE_DIR = /home/a2rlab/Documents/emre/sqpcpu
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/a2rlab/Documents/emre/sbx/sqpcpu/build
+CMAKE_BINARY_DIR = /home/a2rlab/Documents/emre/sqpcpu/build
 
 #=============================================================================
 # Directory level rules for the build root directory
@@ -97,14 +97,14 @@ clean: CMakeFiles/sqpcpu_static.dir/clean
 CMakeFiles/sqpcpu_shared.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_shared.dir/build.make CMakeFiles/sqpcpu_shared.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_shared.dir/build.make CMakeFiles/sqpcpu_shared.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles --progress-num=3,4 "Built target sqpcpu_shared"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles --progress-num=3,4 "Built target sqpcpu_shared"
 .PHONY : CMakeFiles/sqpcpu_shared.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/sqpcpu_shared.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 2
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/sqpcpu_shared.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 0
 .PHONY : CMakeFiles/sqpcpu_shared.dir/rule
 
 # Convenience name for target.
@@ -124,14 +124,14 @@ CMakeFiles/sqpcpu_shared.dir/clean:
 CMakeFiles/sqpcpu_example.dir/all: CMakeFiles/sqpcpu_shared.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_example.dir/build.make CMakeFiles/sqpcpu_example.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_example.dir/build.make CMakeFiles/sqpcpu_example.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles --progress-num=1,2 "Built target sqpcpu_example"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles --progress-num=1,2 "Built target sqpcpu_example"
 .PHONY : CMakeFiles/sqpcpu_example.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/sqpcpu_example.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/sqpcpu_example.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 0
 .PHONY : CMakeFiles/sqpcpu_example.dir/rule
 
 # Convenience name for target.
@@ -151,14 +151,14 @@ CMakeFiles/sqpcpu_example.dir/clean:
 CMakeFiles/sqpcpu_static.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_static.dir/build.make CMakeFiles/sqpcpu_static.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/sqpcpu_static.dir/build.make CMakeFiles/sqpcpu_static.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles --progress-num=5,6 "Built target sqpcpu_static"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles --progress-num=5,6 "Built target sqpcpu_static"
 .PHONY : CMakeFiles/sqpcpu_static.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/sqpcpu_static.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 2
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/sqpcpu_static.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles 0
 .PHONY : CMakeFiles/sqpcpu_static.dir/rule
 
 # Convenience name for target.

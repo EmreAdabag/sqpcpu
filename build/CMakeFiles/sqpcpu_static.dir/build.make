@@ -62,10 +62,10 @@ RM = /home/a2rlab/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/a2rlab/Documents/emre/sbx/sqpcpu
+CMAKE_SOURCE_DIR = /home/a2rlab/Documents/emre/sqpcpu
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/a2rlab/Documents/emre/sbx/sqpcpu/build
+CMAKE_BINARY_DIR = /home/a2rlab/Documents/emre/sqpcpu/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/sqpcpu_static.dir/depend.make
@@ -78,16 +78,16 @@ include CMakeFiles/sqpcpu_static.dir/flags.make
 
 CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o: CMakeFiles/sqpcpu_static.dir/flags.make
 CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o: ../src/thneed.cpp
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o -c /home/a2rlab/Documents/emre/sbx/sqpcpu/src/thneed.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -o CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o -c /home/a2rlab/Documents/emre/sqpcpu/src/thneed.cpp
 
 CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/a2rlab/Documents/emre/sbx/sqpcpu/src/thneed.cpp > CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/a2rlab/Documents/emre/sqpcpu/src/thneed.cpp > CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.i
 
 CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/a2rlab/Documents/emre/sbx/sqpcpu/src/thneed.cpp -o CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/a2rlab/Documents/emre/sqpcpu/src/thneed.cpp -o CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.s
 
 # Object files for target sqpcpu_static
 sqpcpu_static_OBJECTS = \
@@ -99,7 +99,7 @@ sqpcpu_static_EXTERNAL_OBJECTS =
 libsqpcpu.a: CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o
 libsqpcpu.a: CMakeFiles/sqpcpu_static.dir/build.make
 libsqpcpu.a: CMakeFiles/sqpcpu_static.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libsqpcpu.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libsqpcpu.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/sqpcpu_static.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/sqpcpu_static.dir/link.txt --verbose=$(VERBOSE)
 
@@ -113,6 +113,6 @@ CMakeFiles/sqpcpu_static.dir/clean:
 .PHONY : CMakeFiles/sqpcpu_static.dir/clean
 
 CMakeFiles/sqpcpu_static.dir/depend:
-	cd /home/a2rlab/Documents/emre/sbx/sqpcpu/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/a2rlab/Documents/emre/sbx/sqpcpu /home/a2rlab/Documents/emre/sbx/sqpcpu /home/a2rlab/Documents/emre/sbx/sqpcpu/build /home/a2rlab/Documents/emre/sbx/sqpcpu/build /home/a2rlab/Documents/emre/sbx/sqpcpu/build/CMakeFiles/sqpcpu_static.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/a2rlab/Documents/emre/sqpcpu/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/a2rlab/Documents/emre/sqpcpu /home/a2rlab/Documents/emre/sqpcpu /home/a2rlab/Documents/emre/sqpcpu/build /home/a2rlab/Documents/emre/sqpcpu/build /home/a2rlab/Documents/emre/sqpcpu/build/CMakeFiles/sqpcpu_static.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/sqpcpu_static.dir/depend
 

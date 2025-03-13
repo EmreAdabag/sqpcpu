@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/a2rlab/Documents/emre/sbx/sqpcpu/include -isystem /usr/include/eigen3 -isystem /home/a2rlab/miniconda3/include -isystem /usr/local/include/osqp
+CXX_INCLUDES = -I/home/a2rlab/Documents/emre/sqpcpu/include -isystem /usr/include/eigen3 -isystem /home/a2rlab/miniconda3/include -isystem /usr/local/include/osqp
 
 CXX_FLAGS = -O3 -std=gnu++17
 
