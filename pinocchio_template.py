@@ -86,12 +86,10 @@ class thneed:
         self.l = np.zeros(self.N*self.nx)
         self.P = self.initialize_P()
         self.g = np.zeros(self.traj_len)
-        self.Pdata = np.zeros(self.P.nnz)
-        self.Adata = np.zeros(self.A.nnz)
 
         self.osqp = osqp.OSQP()
-        osqp_settings = {'verbose': False, 'warm_start': False}
-        print(f'osqp warm starting: {False}')
+        osqp_settings = {'verbose': False, 'warm_start': True}
+        print(f'osqp warm starting: {True}')
         self.osqp.setup(P=self.P, q=self.g, A=self.A, l=self.l, u=self.l, **osqp_settings)
 
         # temporary variables so u don't have to pass around idk if this actually helps
@@ -105,12 +103,21 @@ class thneed:
         self.rho_factor = 1.2
         self.rho_min = 1e-3
         self.rho_max = 10
+        self.mu = 10.0
+    
+        # random
+        self.gravity = True
 
     def clean_start(self):
         self.XU = np.zeros(self.traj_len)
 
     def shift_start(self):
         self.XU[:-self.nxu] = self.XU[self.nxu:]
+
+    def gravity_off(self):
+        self.model.gravity.linear = np.array([0,0,0])
+    def gravity_on(self):
+        self.model.gravity.linear = np.array([0,0,-9.81])
 
     def initialize_P(self):
         block = np.eye(self.nxu)
@@ -160,14 +167,14 @@ class thneed:
             
             self.compute_dynamics_jacobians(qcur, vcur, ucur)
             
-            self.Adata[Aind:Aind+self.nx*self.nx*2]=self.A_k.T.reshape(-1)
+            self.A.data[Aind:Aind+self.nx*self.nx*2]=self.A_k.T.reshape(-1)
             Aind += self.nx*self.nx*2
-            self.Adata[Aind:Aind+self.nx*self.nu]=self.B_k.T.reshape(-1)
+            self.A.data[Aind:Aind+self.nx*self.nu]=self.B_k.T.reshape(-1)
             Aind += self.nx*self.nu
 
             self.l[(k+1)*self.nx:(k+2)*self.nx] = -1.0 * self.cx_k
 
-        self.Adata[Aind:] = -1.0 * np.eye(self.nx).reshape(-1)
+        self.A.data[Aind:] = -1.0 * np.eye(self.nx).reshape(-1)
         Aind += self.nx*self.nx
 
     def rk4(self,q,v,u,dt):    
@@ -223,20 +230,20 @@ class thneed:
 
             phessian = Q_modified * np.outer(joint_err, joint_err) + int(self.userho) * self.rho * np.eye(self.nq)
             pos_costs = phessian[np.tril_indices_from(phessian)]
-            self.Pdata[Pind:Pind+len(pos_costs)] = pos_costs
+            self.P.data[Pind:Pind+len(pos_costs)] = pos_costs
             Pind += len(pos_costs)
-            self.Pdata[Pind:Pind+self.nv] = np.full(self.nv, dQ_modified + int(self.userho) * self.rho)
+            self.P.data[Pind:Pind+self.nv] = np.full(self.nv, dQ_modified + int(self.userho) * self.rho)
             Pind+=self.nv
             if k < self.N-1:
-                self.Pdata[Pind:Pind+self.nu] = np.full(self.nu, R_modified + int(self.userho) * self.rho)
+                self.P.data[Pind:Pind+self.nu] = np.full(self.nu, R_modified + int(self.userho) * self.rho)
                 Pind+=self.nu
                 self.g[g_start + self.nx : g_start + self.nx + self.nu] = R_modified * XU_k[self.nx:self.nx+self.nu].reshape(-1)
 
     def setup_and_solve_qp(self, xu, xs, eepos_g):
         self.update_constraint_matrix(xu, xs)
         self.update_cost_matrix(xu, eepos_g)
-        self.osqp.update(Px=self.Pdata)
-        self.osqp.update(Ax=self.Adata)
+        self.osqp.update(Px=self.P.data)
+        self.osqp.update(Ax=self.A.data)
         self.osqp.update(q=self.g, l=self.l, u=self.l)
         return self.osqp.solve()
     
@@ -279,12 +286,10 @@ class thneed:
         return err
 
     def linesearch(self, XU, XU_fullstep, eepos_goals):
-            mu = 10.0
-    
             base_qcost, base_vcost, base_ucost = self.eepos_cost(eepos_goals, XU)
             integrator_err = self.integrator_err(XU)
             baseCV = integrator_err + np.linalg.norm(XU[:self.nx] - XU[:self.nx])
-            basemerit = base_qcost + base_vcost + base_ucost + mu * baseCV
+            basemerit = base_qcost + base_vcost + base_ucost + self.mu * baseCV
             # print(f'base costs: {(base_qcost, base_vcost, base_ucost)}, baseCV: {baseCV}, base merit: {basemerit}')
             diff = XU_fullstep - XU
 
@@ -295,7 +300,7 @@ class thneed:
                 qcost_new, vcost_new, ucost_new = self.eepos_cost(eepos_goals, XU_new)
                 integrator_err = self.integrator_err(XU_new)
                 CV_new = integrator_err + np.linalg.norm(XU_new[:self.nx] - XU[:self.nx])
-                merit_new = qcost_new + vcost_new + ucost_new + mu * CV_new
+                merit_new = qcost_new + vcost_new + ucost_new + self.mu * CV_new
                 # print(f'new costs: {(qcost_new, vcost_new, ucost_new)}, newCV: {CV_new}, new merit: {merit_new}')
                 exit_condition = (merit_new <= basemerit)
 
