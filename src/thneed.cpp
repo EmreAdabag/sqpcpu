@@ -1,3 +1,4 @@
+#include "../include/thneed.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
@@ -14,41 +15,10 @@
 
 namespace sqpcpu {
 
-class Thneed {
-public:
-    pinocchio::Model model;
-    pinocchio::Data data;
-    int N, nq, nv, nx, nu, nxu, traj_len;
-    double dt, dQ_cost = 0.01, R_cost = 1e-5, QN_cost = 100, eps = 1.0;
-    bool regularize = false;
+    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start) : N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start) {
 
-    Eigen::MatrixXd A_k, B_k;
-    Eigen::VectorXd cx_k;
-    Eigen::VectorXd l;
-    Eigen::VectorXd q;
-
-    Eigen::SparseMatrix<double> Acsc;
-    Eigen::SparseMatrix<double> Pcsc;
-
-    OsqpEigen::Solver solver;
-
-    // temporary variables
-    Eigen::VectorXd q_tmp;
-    Eigen::VectorXd v_tmp;
-    Eigen::VectorXd u_tmp;
-    Eigen::VectorXd xs_tmp;
-    Eigen::VectorXd XU_tmp;
-    
-
-    Eigen::VectorXd qpsol_tmp;
-    Eigen::Vector3d eepos_tmp;
-    Eigen::MatrixXd Q_cost_joint_err_tmp;
-    Eigen::VectorXd XU_new_tmp;
-    Eigen::MatrixXd deepos_tmp;
-    Eigen::VectorXd xnext_tmp;
-    Eigen::VectorXd xcur_tmp;
-    
-    Thneed(const pinocchio::Model& model, int N=32, float dt=0.01) : model(model), data(model), N(N), dt(dt) {
+        pinocchio::urdf::buildModel(urdf_filename, model);
+        data = pinocchio::Data(model);
         
         nq = model.nq;
         nv = model.nv;
@@ -61,6 +31,7 @@ public:
         B_k.resize(nx, nu);
         cx_k.resize(nx);
         l.resize(N*nx);
+        XU.resize(traj_len);
 
         q.resize(traj_len);
 
@@ -78,6 +49,7 @@ public:
         initialize_matrices();
 
         solver.settings()->setVerbosity(false);
+        solver.settings()->setWarmStart(osqp_warm_start);
         solver.data()->setNumberOfVariables(traj_len);
         solver.data()->setNumberOfConstraints(N*nx);
         solver.data()->setHessianMatrix(Pcsc);
@@ -95,7 +67,7 @@ public:
         Q_cost_joint_err_tmp.resize(nq, nq);
     }
 
-    void initialize_matrices() {
+    void Thneed::initialize_matrices() {
         std::vector<Eigen::Triplet<double>> P_triplets, A_triplets;
         P_triplets.reserve(N*nq*nq + N*nv + (N-1)*nu);
         A_triplets.reserve(N*nx*nx + (N-1)*(nx*(nx+nu)));
@@ -139,7 +111,11 @@ public:
         Acsc.setFromTriplets(A_triplets.begin(), A_triplets.end());
     }
 
-    void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u) {
+    void Thneed::setxs(const Eigen::VectorXd& xs) {
+        XU.segment(0, nx) = xs;
+    }
+
+    void Thneed::compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u) {
         pinocchio::computeABADerivatives(model, data, q, v, u);
         
         A_k.block(nq, 0, nq, nq) = data.ddq_dq * dt;
@@ -152,7 +128,7 @@ public:
         cx_k = xnext_tmp - A_k * xcur_tmp - B_k * u;
     }
 
-    void update_constraint_matrix(const Eigen::VectorXd& xu, const Eigen::VectorXd& xs) {
+    void Thneed::update_constraint_matrix(const Eigen::VectorXd& xs) {
         l.segment(0, nx) = -1 * xs;
         double *Acsc_val = Acsc.valuePtr();
         int block_nnz = nx*nx + nx*nu + nx;
@@ -160,9 +136,9 @@ public:
         for (int i = 0; i < N-1; i++) {
             int xu_stride = nx + nu;
             compute_dynamics_jacobians(
-                xu.segment(i*xu_stride, nq),
-                xu.segment(i*xu_stride + nq, nv),
-                xu.segment(i*xu_stride + nx, nu));
+                XU.segment(i*xu_stride, nq),
+                XU.segment(i*xu_stride + nq, nv),
+                XU.segment(i*xu_stride + nx, nu));
             int Acsc_offset = i*block_nnz;
             for (int j = 0; j < nx; j++) {
                 std::copy(A_k.data() + j*nx, A_k.data() + j*nx + nx, Acsc_val + Acsc_offset + j*nx + j + 1);
@@ -172,25 +148,25 @@ public:
         }
     }
 
-    void fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u) {
+    void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u) {
         pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
         auto qnext = pinocchio::integrate(model, x.segment(0, nq), x.segment(nq, nv) * dt);
         auto vnext = x.segment(nq, nv) + data.ddq * dt;
         xnext_tmp << qnext, vnext;
     }
 
-    void eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out) {
+    void Thneed::eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out) {
         pinocchio::forwardKinematics(model, data, q);
         eepos_out = data.oMi[EEPOS_JOINT_ID].translation();
     }
     
-    void d_eepos(const Eigen::VectorXd& q) {
+    void Thneed::d_eepos(const Eigen::VectorXd& q) {
         pinocchio::computeJointJacobians(model, data, q);
         deepos_tmp = pinocchio::getJointJacobian(model, data, EEPOS_JOINT_ID, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED).topRows(3);
         eepos_tmp = data.oMi[EEPOS_JOINT_ID].translation();
     }
 
-    void update_cost_matrix(const Eigen::VectorXd& XU, const Eigen::VectorXd& eepos_g) {
+    void Thneed::update_cost_matrix(const Eigen::VectorXd& eepos_g) {
         float Q_cost;
         int xu_stride = nx + nu;
         int block_nnz = nq*nq + nv + nu;
@@ -221,45 +197,46 @@ public:
         }
     }
 
-    float eepos_cost(const Eigen::VectorXd& XU, const Eigen::VectorXd& eepos_g) {
+    float Thneed::eepos_cost(const Eigen::VectorXd& xu, const Eigen::VectorXd& eepos_g) {
         float Q_cost, cost = 0;
 
         for (int i = 0; i < N; i++) {
             Q_cost = i==N-1 ? QN_cost : 1.0;
-            eepos(XU.segment(i*nxu, nq), eepos_tmp);
+            eepos(xu.segment(i*nxu, nq), eepos_tmp);
             cost += Q_cost * (eepos_tmp - eepos_g.segment(i*3, 3)).squaredNorm();
-            cost += dQ_cost * XU.segment(i*nxu + nq, nv).squaredNorm();
+            cost += dQ_cost * xu.segment(i*nxu + nq, nv).squaredNorm();
             if (i < N-1) {
-                cost += R_cost * XU.segment(i*nxu + nx, nu).squaredNorm();
+                cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
             }
         }
         return cost;
     }
 
-    float integrator_err(const Eigen::VectorXd& XU) {
+    float Thneed::integrator_err(const Eigen::VectorXd& xu) {
         float err = 0;
         for (int i = 0; i < N-1; i++) {
-            fwd_euler(XU.segment(i*nxu, nx), XU.segment(i*nxu+nx, nu));
-            err += (xnext_tmp - XU.segment((i+1)*nxu, nx)).norm();
+            fwd_euler(xu.segment(i*nxu, nx), xu.segment(i*nxu+nx, nu));
+            err += (xnext_tmp - xu.segment((i+1)*nxu, nx)).norm();
         }
         return err;
     }
 
-    void setup_solve_osqp(Eigen::VectorXd xs, Eigen::VectorXd XU, Eigen::VectorXd eepos_g) {
-        update_cost_matrix(XU, eepos_g);
-        update_constraint_matrix(XU, xs);
+    bool Thneed::setup_solve_osqp(Eigen::VectorXd xs, Eigen::VectorXd eepos_g) {
+        update_cost_matrix(eepos_g);
+        update_constraint_matrix(xs);
         solver.updateHessianMatrix(Pcsc);
         solver.updateGradient(q);
         solver.updateLinearConstraintsMatrix(Acsc);
         solver.updateBounds(l, l);
 
         if (solver.solveProblem() != OsqpEigen::ErrorExitFlag::NoError) {
-            std::cout << "Error solving problem" << std::endl;
+            return false;
         }
         qpsol_tmp = solver.getSolution();
+        return true;
     }
 
-    float linesearch(const Eigen::VectorXd& xs, const Eigen::VectorXd& XU, const Eigen::VectorXd& XU_full, const Eigen::VectorXd& eepos_g) {
+    float Thneed::linesearch(const Eigen::VectorXd& xs, const Eigen::VectorXd& XU_full, const Eigen::VectorXd& eepos_g) {
         float mu = 10.0;
         float alpha = 1.0;
         float cost_new, CV_new, merit_new;
@@ -268,7 +245,7 @@ public:
         float baseCV = integrator_err(XU);
         float basemerit = basecost + mu * baseCV;
 
-        XU_new_tmp = XU;
+        // XU_new_tmp = XU;
         for (int i = 0; i < 8; i++) {
             XU_new_tmp = XU + alpha * (XU_full - XU);
             cost_new = eepos_cost(XU_new_tmp, eepos_g);
@@ -282,12 +259,13 @@ public:
         return 0;
     }
 
-    void sqp(const Eigen::VectorXd& xs, Eigen::VectorXd& XU, const Eigen::VectorXd& eepos_g) {
+    void Thneed::sqp(const Eigen::VectorXd& xs, const Eigen::VectorXd& eepos_g) {
         float stepsize, alpha;
-        for (int i = 0; i < 2; i++) {
-            setup_solve_osqp(xs, XU, eepos_g);
+        for (int i = 0; i < max_qp_iters; i++) {
+            if (!setup_solve_osqp(xs, eepos_g)) { continue; }
             
-            alpha = linesearch(xs, XU, qpsol_tmp, eepos_g);
+            alpha = linesearch(xs, qpsol_tmp, eepos_g);
+            if (alpha == 0.0) { continue; }
 
             stepsize = alpha * (qpsol_tmp - XU).norm();
             XU = XU + alpha * (qpsol_tmp - XU);
@@ -297,46 +275,4 @@ public:
         }
     }
 
-};
-
 } // namespace sqpcpu
-
-int main(int argc, char ** argv)
-{
-  using namespace pinocchio;
-  
-  const std::string urdf_filename = "/home/a2rlab/Documents/emre/indy-ros2/indy_description/urdf_files/indy7.urdf";
-  
-  Model model;
-  pinocchio::urdf::buildModel(urdf_filename,model);
-  Data data(model);
-  sqpcpu::Thneed t(model, 32, 0.01);
-
-  Eigen::VectorXd q = Eigen::VectorXd::Ones(model.nq);
-  Eigen::VectorXd v = Eigen::VectorXd::Ones(model.nv);
-  Eigen::VectorXd u = Eigen::VectorXd::Ones(model.nv);
-  Eigen::VectorXd xs = Eigen::VectorXd::Ones(model.nq + model.nv);
-  Eigen::VectorXd XU = Eigen::VectorXd::Ones(t.traj_len);
-  Eigen::VectorXd XU_full = Eigen::VectorXd::Zero(t.traj_len);
-  Eigen::VectorXd eepos_g = Eigen::VectorXd::Ones(3*t.N);
-
-  const int num_iterations = 1;
-  struct timeval start, end;
-  gettimeofday(&start, NULL);
-
-  for (int i = 0; i < num_iterations; i++) {
-    t.sqp(xs, XU, eepos_g);
-  }
-// t.setup_solve_osqp(xs, XU, eepos_g);
-    
-  gettimeofday(&end, NULL);
-  double elapsed = (end.tv_sec - start.tv_sec) * 1000.0;    // sec to ms
-  elapsed += (end.tv_usec - start.tv_usec) / 1000.0;        // us to ms
-
-  std::cout << "XU: " << XU.transpose() << std::endl;
-  std::cout << "Total time for " << num_iterations << " iterations: " 
-            << elapsed << " ms" << std::endl;
-  std::cout << "Average time per iteration: " 
-            << elapsed / num_iterations << " ms\n" << std::endl;
-  return 0;
-}

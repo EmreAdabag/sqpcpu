@@ -1,5 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o"
+  "CMakeFiles/sqpcpu_static.dir/src/thneed.cpp.o.d"
   "libsqpcpu.a"
   "libsqpcpu.pdb"
 )

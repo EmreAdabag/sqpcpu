@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.12)
+# Set CMake policies needed for pybind11
+cmake_policy(SET CMP0057 NEW)  # Support IN_LIST operator
 project(sqpcpu)
 
 # Set build type if not specified
@@ -11,6 +13,25 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
 
+# macOS specific settings for dynamic library loading
+if(APPLE)
+    # Use, i.e. don't skip the full RPATH for the build tree
+    set(CMAKE_SKIP_BUILD_RPATH FALSE)
+    # When building, don't use the install RPATH already
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+    # Add the automatically determined parts of the RPATH
+    # which point to directories outside the build tree to the install RPATH
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+    # Add Homebrew lib directory to RPATH
+    list(APPEND CMAKE_INSTALL_RPATH "/opt/homebrew/lib")
+    # Add the build directory to the RPATH
+    list(APPEND CMAKE_INSTALL_RPATH "${CMAKE_BINARY_DIR}")
+    # Set the RPATH to be used when installing
+    set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_RPATH}")
+    # Add origin to RPATH so libraries can find other libraries in the same directory
+    set(CMAKE_MACOSX_RPATH ON)
+endif()
+
 # Set OsqpEigen directory explicitly
 set(OsqpEigen_DIR "$ENV{HOME}/miniconda3/lib/cmake/OsqpEigen")
 
@@ -18,6 +39,10 @@ set(OsqpEigen_DIR "$ENV{HOME}/miniconda3/lib/cmake/OsqpEigen")
 find_package(OsqpEigen REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(Eigen3 REQUIRED)
+
+# Find pybind11 - use a more robust approach
+find_package(Python COMPONENTS Interpreter Development NumPy REQUIRED)
+find_package(pybind11 CONFIG REQUIRED)
 
 # Create both static and shared libraries
 add_library(sqpcpu_shared SHARED src/thneed.cpp)
@@ -53,6 +78,27 @@ foreach(target sqpcpu_shared sqpcpu_static)
     )
 endforeach()
 
+# Python bindings - use a more compatible approach
+pybind11_add_module(pysqpcpu 
+    src/python_bindings.cpp
+)
+
+# Link against our static library
+target_link_libraries(pysqpcpu PRIVATE 
+    sqpcpu_static
+    ${PYTHON_LIBRARIES}
+)
+
+# Add include directories for the Python module
+target_include_directories(pysqpcpu PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${EIGEN3_INCLUDE_DIRS}
+    ${pinocchio_INCLUDE_DIRS}
+    ${PYTHON_INCLUDE_DIRS}
+    ${NumPy_INCLUDE_DIRS}
+    "$ENV{HOME}/miniconda3/include"
+)
+
 # Install rules
 include(GNUInstallDirs)
 install(TARGETS sqpcpu_shared sqpcpu_static
@@ -64,6 +110,11 @@ install(TARGETS sqpcpu_shared sqpcpu_static
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp"
+)
+
+# Install Python module
+install(TARGETS pysqpcpu
+    LIBRARY DESTINATION ${Python_SITEARCH}
 )
 
 # Optional: Build the example executable
@@ -85,4 +136,12 @@ if(BUILD_EXAMPLES)
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
     )
+    
+    # For macOS, set the rpath for the executable
+    if(APPLE)
+        set_target_properties(sqpcpu_example PROPERTIES
+            INSTALL_RPATH "/opt/homebrew/lib;${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_BINARY_DIR}"
+            BUILD_WITH_INSTALL_RPATH TRUE
+        )
+    endif()
 endif()

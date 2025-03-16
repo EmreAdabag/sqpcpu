@@ -1,5 +1,6 @@
 file(REMOVE_RECURSE
   "CMakeFiles/sqpcpu_example.dir/examples/main.cpp.o"
+  "CMakeFiles/sqpcpu_example.dir/examples/main.cpp.o.d"
   "sqpcpu_example"
   "sqpcpu_example.pdb"
 )

@@ -1,0 +1,10 @@
+build*
+*.so
+*.dylib
+*.a
+*.lib
+*.exp
+*.dll
+*.dylib
+__pycache__
+.vscode

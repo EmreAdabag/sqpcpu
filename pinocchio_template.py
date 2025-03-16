@@ -31,7 +31,7 @@ import osqp
 
 class thneed:
 
-    def __init__(self, model: pin.Model=None, N=32, dt=0.01):
+    def __init__(self, model: pin.Model=None, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
         self.stats = {
             'qp_iters': {
                 'values': [],
@@ -88,8 +88,7 @@ class thneed:
         self.g = np.zeros(self.traj_len)
 
         self.osqp = osqp.OSQP()
-        osqp_settings = {'verbose': False, 'warm_start': True}
-        print(f'osqp warm starting: {True}')
+        osqp_settings = {'verbose': False, 'warm_start': osqp_warm_start}
         self.osqp.setup(P=self.P, q=self.g, A=self.A, l=self.l, u=self.l, **osqp_settings)
 
         # temporary variables so u don't have to pass around idk if this actually helps
@@ -99,7 +98,7 @@ class thneed:
         # self.cv_k = np.zeros(self.nv)
 
         # hyperparameters
-        self.max_qp_iters = 5
+        self.max_qp_iters = max_qp_iters
         self.rho_factor = 1.2
         self.rho_min = 1e-3
         self.rho_max = 10
@@ -113,6 +112,9 @@ class thneed:
 
     def shift_start(self):
         self.XU[:-self.nxu] = self.XU[self.nxu:]
+    
+    def setxs(self, xs):
+        self.XU[0:self.nx] = xs
 
     def gravity_off(self):
         self.model.gravity.linear = np.array([0,0,0])
