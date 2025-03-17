@@ -31,16 +31,13 @@ namespace sqpcpu {
         B_k.resize(nx, nu);
         cx_k.resize(nx);
         l.resize(N*nx);
-        XU.resize(traj_len);
-
+        XU.resize(traj_len); XU.setZero();
         q.resize(traj_len);
 
         // top left corner of A_k is I
         A_k.topLeftCorner(nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
-
         // top right corner of A_k is dt*I
         A_k.block(0, nq, nq, nq) = dt * Eigen::MatrixXd::Identity(nq, nq);
-        
         // set B to zeros
         B_k.setZero();
 

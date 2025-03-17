@@ -44,9 +44,15 @@ find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter Development NumPy REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
+# Define source files
+set(SQPCPU_SOURCES
+    src/thneed.cpp
+    src/batch_thneed.cpp
+)
+
 # Create both static and shared libraries
-add_library(sqpcpu_shared SHARED src/thneed.cpp)
-add_library(sqpcpu_static STATIC src/thneed.cpp)
+add_library(sqpcpu_shared SHARED ${SQPCPU_SOURCES})
+add_library(sqpcpu_static STATIC ${SQPCPU_SOURCES})
 
 # Set the output names to avoid conflicts
 set_target_properties(sqpcpu_shared PROPERTIES 
@@ -117,9 +123,10 @@ install(TARGETS pysqpcpu
     LIBRARY DESTINATION ${Python_SITEARCH}
 )
 
-# Optional: Build the example executable
+# Optional: Build the example executables
 option(BUILD_EXAMPLES "Build example executables" ON)
 if(BUILD_EXAMPLES)
+    # Original example
     add_executable(sqpcpu_example examples/main.cpp)
     target_include_directories(sqpcpu_example PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -137,11 +144,31 @@ if(BUILD_EXAMPLES)
         CXX_STANDARD_REQUIRED ON
     )
     
-    # For macOS, set the rpath for the executable
+    # Batch example
+    add_executable(batch_example examples/batch_example.cpp)
+    target_include_directories(batch_example PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${EIGEN3_INCLUDE_DIRS}
+        ${pinocchio_INCLUDE_DIRS}
+        "$ENV{HOME}/miniconda3/include"
+    )
+    target_link_libraries(batch_example
+        sqpcpu_shared  # Link against the shared library
+        ${pinocchio_LIBRARIES}
+        OsqpEigen::OsqpEigen
+    )
+    set_target_properties(batch_example PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+    
+    # For macOS, set the rpath for the executables
     if(APPLE)
-        set_target_properties(sqpcpu_example PROPERTIES
-            INSTALL_RPATH "/opt/homebrew/lib;${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_BINARY_DIR}"
-            BUILD_WITH_INSTALL_RPATH TRUE
-        )
+        foreach(example_target sqpcpu_example batch_example)
+            set_target_properties(${example_target} PROPERTIES
+                INSTALL_RPATH "/opt/homebrew/lib;${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_BINARY_DIR}"
+                BUILD_WITH_INSTALL_RPATH TRUE
+            )
+        endforeach()
     endif()
 endif()
