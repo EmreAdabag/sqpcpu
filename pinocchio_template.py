@@ -1,37 +1,14 @@
 import numpy as np
-np.set_printoptions(linewidth=99999999)
+np.set_printoptions(linewidth=1e6)
 
 import pinocchio as pin
-# from pinocchio.visualize import MeshcatVisualizer
-# import meshcat.geometry as g
-# import meshcat.transformations as tf
 from scipy.sparse import bmat, csc_matrix, triu
 import osqp
-# import time
-
-# urdf_filename = (
-#     "../indy-ros2/indy_description/urdf_files/indy7.urdf"
-# )
- 
-# model = pin.buildModelFromUrdf(
-#     urdf_filename
-# )
-# visual_model = pin.buildGeomFromUrdf(
-#     model,
-#     urdf_filename,
-#     pin.GeometryType.VISUAL
-# )
-# collision_model = pin.buildGeomFromUrdf(
-#     model,
-#     urdf_filename,
-#     pin.GeometryType.COLLISION
-# )
-
 
 
 class thneed:
 
-    def __init__(self, model: pin.Model=None, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
+    def __init__(self, urdf_path, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
         self.stats = {
             'qp_iters': {
                 'values': [],
@@ -50,20 +27,18 @@ class thneed:
             }
         }
         # model things
-        if not model:
-            model = pin.buildModelFromUrdf(("../indy-ros2/indy_description/urdf_files/indy7.urdf"))
-        self.model = model
-        self.data = model.createData()
+        self.model = pin.buildModelFromUrdf(urdf_path)
+        self.data = self.model.createData()
 
         # environment
         self.N = N
         self.dt = dt
 
         # properties
-        self.nq = model.nq
-        self.nv = model.nv
+        self.nq = self.model.nq
+        self.nv = self.model.nv
         self.nx = self.nq + self.nv
-        self.nu = len(model.joints) - 1 # honestly idk what this is about but it works for indy7
+        self.nu = len(self.model.joints) - 1 # honestly idk what this is about but it works for indy7
         self.nxu = self.nx + self.nu
         self.traj_len = (self.nx + self.nu)*self.N - self.nu
         
@@ -106,6 +81,9 @@ class thneed:
     
         # random
         self.gravity = True
+
+        # eepos
+        self.eepos_joint_id = len(self.model.joints) - 1
 
     def clean_start(self):
         self.XU = np.zeros(self.traj_len)
@@ -198,13 +176,12 @@ class thneed:
 
     def eepos(self, q):
         pin.forwardKinematics(self.model, self.data, q)
-        return np.array(self.data.oMi[6].translation)
+        return np.array(self.data.oMi[self.eepos_joint_id].translation)
 
     def d_eepos(self, q):
-        eepos_joint_id = 6
         pin.computeJointJacobians(self.model, self.data, q)
-        deepos = pin.getJointJacobian(self.model, self.data, eepos_joint_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)[:3, :]
-        eepos = self.data.oMi[6].translation
+        deepos = pin.getJointJacobian(self.model, self.data, self.eepos_joint_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)[:3, :]
+        eepos = self.data.oMi[self.eepos_joint_id].translation
         return eepos, deepos
 
     def update_cost_matrix(self, XU, eepos_g):
@@ -339,69 +316,3 @@ class thneed:
                 break
         self.stats['qp_iters']['values'].append(qp+1)
         return not updated
-    
-# xpath = []
-# def runeepos():
-#     t = thneed(model)
-#     nq = t.nq
-#     nv = t.nv
-#     nx = t.nx
-#     nu = t.nu
-
-
-#     xstart = np.hstack((np.ones(nq), np.zeros(nv)))
-#     xcur = xstart
-    
-#     # endpoints = [thing.eepos(np.random.rand(6) * 2 - 1.0) for _ in range(3)]
-#     endpoints = np.array([np.array(t.eepos(np.zeros(nq))), np.array(t.eepos(-0.8 * np.ones(nq)))])
-#     print(endpoints)
-#     endpoint_ind = 0
-#     endpoint = endpoints[endpoint_ind]
-#     eepos_goal = np.tile(endpoint, t.N).T
-
-#     XU = np.zeros(t.N*(nx+t.nu)-t.nu)
-#     XU = t.sqp(xcur, eepos_goal, XU)
-
-#     print(f"costs: {t.eepos_cost(eepos_goal, XU)}")
-
-#     for i in range(500):
-        
-#         # which goal are we planning to
-#         cur_eepos = t.eepos(xcur[:nq])
-#         goaldist = np.linalg.norm(cur_eepos - eepos_goal[:3])
-#         if goaldist < 1e-1:
-#             print('switching goals')
-#             endpoint_ind = (endpoint_ind + 1) % len(endpoints)
-#             endpoint = endpoints[endpoint_ind]
-#             eepos_goal = np.tile(endpoint, t.N).T
-#         print(goaldist)
-#         if goaldist > 1.1:
-#             print("breaking on big goal dist")
-#             break
-
-#         xu_new = t.sqp(xcur, eepos_goal, XU)
-        
-#         # print(f"costs: {t.eepos_cost(eepos_goal, XU)}")
-#         trajopt_time = 0.01 # hard coded timestep
-        
-#         # simulate forward using old control
-#         sim_time = trajopt_time
-#         sim_steps = 0    # full steps taken
-#         while sim_time > 0:
-#             timestep = min(sim_time, t.dt)
-#             # print(timestep)
-#             control = XU[sim_steps*(nx+nu)+nx:(sim_steps+1)*(nx+nu)]
-#             xcur = np.vstack(t.rk4(xcur[:nq], xcur[nq:nx], control, timestep)).reshape(-1)
-            
-#             if timestep > 0.5 * t.dt:
-#                 sim_steps += 1
-            
-#             sim_time -= timestep
-#             xpath.append(xcur[:nq])
-#         if sim_steps > 0:
-#             XU[:-(sim_steps)*(nx+nu) or len(XU)] = xu_new[(sim_steps)*(nx+nu):] # update XU with new traj
-#         XU[:nx] = xcur.reshape(-1) # first state is current state
-#         XU[-nx:] = np.hstack([np.ones(nq), np.zeros(nv)]) # last state is 0
-
-#     return endpoints
-# endpoints = runeepos()

@@ -1,0 +1,7 @@
+left off: batch appears to work
+next: 
+    - hook up batch solve to sim and add consensus mechanism
+    - test with same intialization + init fuzz
+    - add support for fext
+    - test with fext
+    - get working on pc
