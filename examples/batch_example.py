@@ -15,7 +15,7 @@ import pysqpcpu
 
 def main():
     # Path to the URDF file
-    urdf_filename = "/Users/emreadabag/code/indy-ros2/indy_description/urdf_files/indy7.urdf"
+    urdf_filename = "../urdfs/indy7.urdf"
     
     # Parameters
     batch_size = 4

@@ -1,37 +1,15 @@
+import pinocchio as pin
 import numpy as np
 np.set_printoptions(linewidth=99999999)
 
-import pinocchio as pin
-# from pinocchio.visualize import MeshcatVisualizer
-# import meshcat.geometry as g
-# import meshcat.transformations as tf
 from scipy.sparse import bmat, csc_matrix, triu
 import osqp
-# import time
-
-# urdf_filename = (
-#     "../indy-ros2/indy_description/urdf_files/indy7.urdf"
-# )
- 
-# model = pin.buildModelFromUrdf(
-#     urdf_filename
-# )
-# visual_model = pin.buildGeomFromUrdf(
-#     model,
-#     urdf_filename,
-#     pin.GeometryType.VISUAL
-# )
-# collision_model = pin.buildGeomFromUrdf(
-#     model,
-#     urdf_filename,
-#     pin.GeometryType.COLLISION
-# )
 
 
 
 class thneed:
 
-    def __init__(self, model: pin.Model=None, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
+    def __init__(self, urdf_filename, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
         self.stats = {
             'qp_iters': {
                 'values': [],
@@ -50,20 +28,18 @@ class thneed:
             }
         }
         # model things
-        if not model:
-            model = pin.buildModelFromUrdf(("../indy-ros2/indy_description/urdf_files/indy7.urdf"))
-        self.model = model
-        self.data = model.createData()
+        self.model = pin.buildModelFromUrdf(urdf_filename)
+        self.data = self.model.createData()
 
         # environment
         self.N = N
         self.dt = dt
 
         # properties
-        self.nq = model.nq
-        self.nv = model.nv
+        self.nq = self.model.nq
+        self.nv = self.model.nv
         self.nx = self.nq + self.nv
-        self.nu = len(model.joints) - 1 # honestly idk what this is about but it works for indy7
+        self.nu = len(self.model.joints) - 1 # honestly idk what this is about but it works for indy7
         self.nxu = self.nx + self.nu
         self.traj_len = (self.nx + self.nu)*self.N - self.nu
         

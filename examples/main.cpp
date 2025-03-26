@@ -7,7 +7,7 @@ int main(int argc, char ** argv)
 {
   using namespace pinocchio;
   
-  const std::string urdf_filename = "/Users/emreadabag/code/indy-ros2/indy_description/urdf_files/indy7.urdf";
+  const std::string urdf_filename = "../urdfs/indy7.urdf";
   
   sqpcpu::Thneed t(urdf_filename, 32, 0.01, 5);
   t.XU = Eigen::VectorXd::Ones(t.traj_len);
