@@ -48,6 +48,10 @@
         "typeinfo": "cpp",
         "unordered_map": "cpp",
         "variant": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "core": "cpp",
+        "specialfunctions": "cpp",
+        "random": "cpp",
+        "complex": "cpp"
     }
 }

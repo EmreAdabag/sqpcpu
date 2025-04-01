@@ -5,7 +5,7 @@
 
 int main(int argc, char ** argv)
 {
-  using namespace pinocchio;
+  // using namespace pinocchio;
   
   const std::string urdf_filename = "../urdfs/indy7.urdf";
   

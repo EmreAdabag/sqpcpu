@@ -21,10 +21,10 @@ public:
     Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true);
     
     void initialize_matrices();
-    void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u);
+    void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext=false);
     void update_constraint_matrix(const Eigen::VectorXd& xs);
     void setxs(const Eigen::VectorXd& xs);
-    void fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u);
+    void fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext=false);
     void eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out);
     void d_eepos(const Eigen::VectorXd& q);
     void update_cost_matrix(const Eigen::VectorXd& eepos_g);
@@ -33,13 +33,15 @@ public:
     bool setup_solve_osqp(Eigen::VectorXd xs, Eigen::VectorXd eepos_g);
     float linesearch(const Eigen::VectorXd& xs, const Eigen::VectorXd& XU_full, const Eigen::VectorXd& eepos_g);
     void sqp(const Eigen::VectorXd& xs, const Eigen::VectorXd& eepos_g);
+    void set_fext(const Eigen::Vector3d& f_ext);
 
     pinocchio::Model model;
     pinocchio::Data data;
-    int N, nq, nv, nx, nu, nxu, traj_len, max_qp_iters;
+    int N, nq, nv, nx, nu, nxu, traj_len, max_qp_iters, fext_timesteps;
     double dt, dQ_cost = 0.01, R_cost = 1e-5, QN_cost = 100, eps = 1.0;
     bool regularize = false;
     bool osqp_warm_start;
+    pinocchio::container::aligned_vector<pinocchio::Force> fext;
 
     Eigen::MatrixXd A_k, B_k;
     Eigen::VectorXd cx_k;

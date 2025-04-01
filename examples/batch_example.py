@@ -56,6 +56,10 @@ def main():
     # set xs for each solver
     batch_solver.batch_update_xs(xs_batch)
 
+    # set fext for each solver
+    fext_batch = np.zeros((batch_size, 3))
+    batch_solver.batch_set_fext(fext_batch)
+
     # Run batch SQP
     batch_solver.batch_sqp(xs_batch, eepos_g_batch)
     

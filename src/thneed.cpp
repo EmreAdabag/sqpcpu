@@ -6,6 +6,7 @@
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/jacobian.hpp"
+#include "pinocchio/container/aligned-vector.hpp"
 #include <OsqpEigen/OsqpEigen.h>
 #include <iostream>
 #include <iomanip>
@@ -33,6 +34,14 @@ namespace sqpcpu {
         l.resize(N*nx);
         XU.resize(traj_len); XU.setZero();
         q.resize(traj_len);
+        xnext_tmp.resize(nx);
+        xcur_tmp.resize(nx);
+        qpsol_tmp.resize(traj_len);
+        XU_new_tmp.resize(traj_len);
+        deepos_tmp.resize(3, nq);
+        Q_cost_joint_err_tmp.resize(nq, nq);
+        fext = pinocchio::container::aligned_vector<pinocchio::Force>(model.njoints, pinocchio::Force::Zero());
+        fext_timesteps = 4;
 
         // top left corner of A_k is I
         A_k.topLeftCorner(nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
@@ -55,13 +64,6 @@ namespace sqpcpu {
         solver.data()->setLowerBound(l);
         solver.data()->setUpperBound(l);
         solver.initSolver();
-
-        xnext_tmp.resize(nx);
-        xcur_tmp.resize(nx);
-        qpsol_tmp.resize(traj_len);
-        XU_new_tmp.resize(traj_len);
-        deepos_tmp.resize(3, nq);
-        Q_cost_joint_err_tmp.resize(nq, nq);
     }
 
     void Thneed::initialize_matrices() {
@@ -112,8 +114,12 @@ namespace sqpcpu {
         XU.segment(0, nx) = xs;
     }
 
-    void Thneed::compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u) {
-        pinocchio::computeABADerivatives(model, data, q, v, u);
+    void Thneed::compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext) {
+        if (usefext) {
+            pinocchio::computeABADerivatives(model, data, q, v, u, fext);
+        } else {
+            pinocchio::computeABADerivatives(model, data, q, v, u);
+        }
         
         A_k.block(nq, 0, nq, nq) = data.ddq_dq * dt;
         A_k.block(nq, nq, nq, nq) = data.ddq_dv * dt + Eigen::MatrixXd::Identity(nv, nv);
@@ -132,10 +138,12 @@ namespace sqpcpu {
 
         for (int i = 0; i < N-1; i++) {
             int xu_stride = nx + nu;
+            bool usefext = i < fext_timesteps;
             compute_dynamics_jacobians(
                 XU.segment(i*xu_stride, nq),
                 XU.segment(i*xu_stride + nq, nv),
-                XU.segment(i*xu_stride + nx, nu));
+                XU.segment(i*xu_stride + nx, nu),
+                usefext);
             int Acsc_offset = i*block_nnz;
             for (int j = 0; j < nx; j++) {
                 std::copy(A_k.data() + j*nx, A_k.data() + j*nx + nx, Acsc_val + Acsc_offset + j*nx + j + 1);
@@ -145,8 +153,13 @@ namespace sqpcpu {
         }
     }
 
-    void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u) {
-        pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
+    void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext) {
+        if (usefext) {
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, fext);
+        } else {
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
+        }
+        
         auto qnext = pinocchio::integrate(model, x.segment(0, nq), x.segment(nq, nv) * dt);
         auto vnext = x.segment(nq, nv) + data.ddq * dt;
         xnext_tmp << qnext, vnext;
@@ -212,7 +225,8 @@ namespace sqpcpu {
     float Thneed::integrator_err(const Eigen::VectorXd& xu) {
         float err = 0;
         for (int i = 0; i < N-1; i++) {
-            fwd_euler(xu.segment(i*nxu, nx), xu.segment(i*nxu+nx, nu));
+            bool usefext = i < fext_timesteps;
+            fwd_euler(xu.segment(i*nxu, nx), xu.segment(i*nxu+nx, nu), usefext);
             err += (xnext_tmp - xu.segment((i+1)*nxu, nx)).norm();
         }
         return err;
@@ -270,6 +284,20 @@ namespace sqpcpu {
                 break;
             }
         }
+    }
+
+    void Thneed::set_fext(const Eigen::Vector3d& f_ext) {
+        // Set external force at the end effector in world frame (actual ref frame is the end effector frame)
+        // Clear previous forces
+        for (size_t i = 0; i < fext.size(); ++i) {
+            fext[i] = pinocchio::Force::Zero();
+        }
+        
+        // Create force object (linear force only, no torque)
+        pinocchio::Force force(f_ext, Eigen::Vector3d::Zero());
+        
+        // Apply force at the end effector
+        fext[EEPOS_JOINT_ID] = force;
     }
 
 } // namespace sqpcpu

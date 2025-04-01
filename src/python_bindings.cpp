@@ -20,6 +20,14 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("eepos_g"))
         .def("setxs", &sqpcpu::Thneed::setxs,
              py::arg("xs"))
+        .def("eepos", [](sqpcpu::Thneed& self, const Eigen::VectorXd& q) {
+            Eigen::Vector3d eepos_out;
+            self.eepos(q, eepos_out);
+            return eepos_out;
+        },
+             py::arg("q"))
+        .def("set_fext", &sqpcpu::Thneed::set_fext,
+             py::arg("f_ext"))
         .def_readwrite("XU", &sqpcpu::Thneed::XU)
         .def_readonly("nx", &sqpcpu::Thneed::nx)
         .def_readonly("nu", &sqpcpu::Thneed::nu)
@@ -27,7 +35,7 @@ PYBIND11_MODULE(pysqpcpu, m) {
         .def_readonly("nv", &sqpcpu::Thneed::nv)
         .def_readonly("N", &sqpcpu::Thneed::N)
         .def_readonly("traj_len", &sqpcpu::Thneed::traj_len);
-        
+
     py::class_<sqpcpu::BatchThneed>(m, "BatchThneed")
         .def(py::init<const std::string&, int, int, float, int, int>(),
              py::arg("urdf_filename"),
@@ -41,5 +49,20 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("eepos_g_batch"))
         .def("batch_update_xs", &sqpcpu::BatchThneed::batch_update_xs,
              py::arg("xs_batch"))
-        .def("get_results", &sqpcpu::BatchThneed::get_results);
+        .def("batch_set_fext", &sqpcpu::BatchThneed::batch_set_fext,
+             py::arg("fext_batch"))
+        .def("get_results", &sqpcpu::BatchThneed::get_results)
+        .def("eepos", [](sqpcpu::BatchThneed& self, const Eigen::VectorXd& q) {
+            Eigen::Vector3d eepos_out;
+            self.eepos(q, eepos_out);
+            return eepos_out;
+        },
+             py::arg("q"))
+        .def_readonly("N", &sqpcpu::BatchThneed::N)
+        .def_readonly("nx", &sqpcpu::BatchThneed::nx)
+        .def_readonly("nu", &sqpcpu::BatchThneed::nu)
+        .def_readonly("nq", &sqpcpu::BatchThneed::nq)
+        .def_readonly("nv", &sqpcpu::BatchThneed::nv)
+        .def_readonly("traj_len", &sqpcpu::BatchThneed::traj_len)
+        .def_readwrite("fext_timesteps", &sqpcpu::BatchThneed::fext_timesteps);
 } 

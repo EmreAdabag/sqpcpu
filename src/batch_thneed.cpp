@@ -5,7 +5,7 @@ namespace sqpcpu {
 
 BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N, 
                          float dt, int max_qp_iters, int num_threads) 
-    : batch_size(batch_size) {
+    : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads) {
     
     // Initialize thread pool with specified number of threads or default to hardware concurrency
     int thread_count = (num_threads > 0) ? num_threads : std::thread::hardware_concurrency();
@@ -16,6 +16,12 @@ BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N
     for (int i = 0; i < batch_size; i++) {
         solvers.emplace_back(urdf_filename, N, dt, max_qp_iters);
     }
+
+    nx = solvers[0].nx;
+    nu = solvers[0].nu;
+    nq = solvers[0].nq;
+    nv = solvers[0].nv;
+    traj_len = solvers[0].traj_len;
 }
 
 void BatchThneed::batch_sqp(const std::vector<Eigen::VectorXd>& xs_batch, 
@@ -83,6 +89,37 @@ std::vector<Eigen::VectorXd> BatchThneed::get_results() const {
     }
     
     return results;
+}
+
+void BatchThneed::batch_set_fext(const std::vector<Eigen::Vector3d>& fext_batch) {
+    // Validate input size
+    if (fext_batch.size() != batch_size) {
+        throw std::runtime_error("Input batch size does not match the number of solvers");
+    }
+    
+    // Create a vector to store futures
+    std::vector<std::future<void>> futures;
+    futures.reserve(batch_size);
+    
+    // Submit tasks to thread pool
+    for (int i = 0; i < batch_size; i++) {
+        futures.push_back(
+            thread_pool->enqueue(
+                [this, i, &fext_batch]() {
+                    solvers[i].set_fext(fext_batch[i]);
+                }
+            )
+        );
+    }
+    
+    // Wait for all tasks to complete   
+    for (auto& future : futures) {
+        future.get();
+    }
+}
+
+void BatchThneed::eepos(const Eigen::VectorXd& q, Eigen::Vector3d& out) {
+    solvers[0].eepos(q, out);
 }
 
 } // namespace sqpcpu 

@@ -36,16 +36,22 @@ public:
     BatchThneed(const std::string& urdf_filename, int batch_size, int N = 32, 
                 float dt = 0.01, int max_qp_iters = 1, int num_threads = 0);
     
+    int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len;
+    float dt;
+
     void batch_sqp(const std::vector<Eigen::VectorXd>& xs_batch, 
                   const std::vector<Eigen::VectorXd>& eepos_g_batch);
     
     void batch_update_xs(const std::vector<Eigen::VectorXd>& xs_batch);
+
+    void batch_set_fext(const std::vector<Eigen::Vector3d>& fext_batch);
     
     std::vector<Eigen::VectorXd> get_results() const;
 
+    void eepos(const Eigen::VectorXd& q, Eigen::Vector3d& out);
+    
     std::vector<Thneed> solvers;
     std::unique_ptr<ThreadPool> thread_pool;
-    int batch_size;
 private:
 };
 

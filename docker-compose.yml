@@ -1,0 +1,7 @@
+version: '3'
+services:
+  sqpcpu:
+    build: .
+    volumes:
+      - ./:/workspace
+    command: bash -c "source /opt/ros/humble/setup.bash && mkdir -p build && cd build && cmake .. && make"
