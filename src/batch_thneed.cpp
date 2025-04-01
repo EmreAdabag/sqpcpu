@@ -4,8 +4,8 @@
 namespace sqpcpu {
 
 BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N, 
-                         float dt, int max_qp_iters, int num_threads) 
-    : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads) {
+                         float dt, int max_qp_iters, int num_threads, int fext_timesteps) 
+    : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads), fext_timesteps(fext_timesteps) {
     
     // Initialize thread pool with specified number of threads or default to hardware concurrency
     int thread_count = (num_threads > 0) ? num_threads : std::thread::hardware_concurrency();
@@ -14,7 +14,7 @@ BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N
     // Create the specified number of Thneed solvers
     solvers.reserve(batch_size);
     for (int i = 0; i < batch_size; i++) {
-        solvers.emplace_back(urdf_filename, N, dt, max_qp_iters);
+        solvers.emplace_back(urdf_filename, N, dt, max_qp_iters, true, fext_timesteps);
     }
 
     nx = solvers[0].nx;
@@ -90,6 +90,20 @@ std::vector<Eigen::VectorXd> BatchThneed::get_results() const {
     
     return results;
 }
+
+std::vector<Eigen::VectorXd> BatchThneed::predict_fwd(const Eigen::VectorXd& xs, const Eigen::VectorXd& u, float dt) {
+    std::vector<Eigen::VectorXd> results;
+    results.reserve(batch_size);
+
+    for (int i = 0; i < batch_size; i++) {
+        // call fwd_euler and retrieve the result from xnext_tmp
+        solvers[i].fwd_euler(xs, u, true, dt);
+        results.push_back(solvers[i].xnext_tmp);
+    }
+
+    return results;
+}
+
 
 void BatchThneed::batch_set_fext(const std::vector<Eigen::Vector3d>& fext_batch) {
     // Validate input size

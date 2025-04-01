@@ -15,7 +15,7 @@ int main(int argc, char ** argv)
   Eigen::VectorXd xs = Eigen::VectorXd::Ones(t.nx);
   Eigen::VectorXd eepos_g = Eigen::VectorXd::Ones(3*t.N);
 
-  const int num_iterations = 10;
+  const int num_iterations = 100;
   struct timeval start, end;
   gettimeofday(&start, NULL);
 

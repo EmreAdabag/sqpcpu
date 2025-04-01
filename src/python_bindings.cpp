@@ -37,13 +37,14 @@ PYBIND11_MODULE(pysqpcpu, m) {
         .def_readonly("traj_len", &sqpcpu::Thneed::traj_len);
 
     py::class_<sqpcpu::BatchThneed>(m, "BatchThneed")
-        .def(py::init<const std::string&, int, int, float, int, int>(),
+        .def(py::init<const std::string&, int, int, float, int, int, int>(),
              py::arg("urdf_filename"),
              py::arg("batch_size"),
              py::arg("N") = 32,
              py::arg("dt") = 0.01,
              py::arg("max_qp_iters") = 1,
-             py::arg("num_threads") = 0)
+             py::arg("num_threads") = 0,
+             py::arg("fext_timesteps") = 0)
         .def("batch_sqp", &sqpcpu::BatchThneed::batch_sqp,
              py::arg("xs_batch"),
              py::arg("eepos_g_batch"))
@@ -58,11 +59,15 @@ PYBIND11_MODULE(pysqpcpu, m) {
             return eepos_out;
         },
              py::arg("q"))
+        .def("predict_fwd", &sqpcpu::BatchThneed::predict_fwd,
+             py::arg("xs"),
+             py::arg("u"),
+             py::arg("dt"))
         .def_readonly("N", &sqpcpu::BatchThneed::N)
         .def_readonly("nx", &sqpcpu::BatchThneed::nx)
         .def_readonly("nu", &sqpcpu::BatchThneed::nu)
         .def_readonly("nq", &sqpcpu::BatchThneed::nq)
         .def_readonly("nv", &sqpcpu::BatchThneed::nv)
         .def_readonly("traj_len", &sqpcpu::BatchThneed::traj_len)
-        .def_readwrite("fext_timesteps", &sqpcpu::BatchThneed::fext_timesteps);
+        .def_readonly("fext_timesteps", &sqpcpu::BatchThneed::fext_timesteps);
 } 

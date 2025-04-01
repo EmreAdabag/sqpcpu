@@ -18,13 +18,13 @@ namespace sqpcpu {
 class Thneed {
 public:
 
-    Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true);
+    Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0);
     
     void initialize_matrices();
     void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext=false);
     void update_constraint_matrix(const Eigen::VectorXd& xs);
     void setxs(const Eigen::VectorXd& xs);
-    void fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext=false);
+    void fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext=false, float dt=0.0);
     void eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out);
     void d_eepos(const Eigen::VectorXd& q);
     void update_cost_matrix(const Eigen::VectorXd& eepos_g);

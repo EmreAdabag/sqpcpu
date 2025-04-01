@@ -7,6 +7,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/jacobian.hpp"
 #include "pinocchio/container/aligned-vector.hpp"
+#include "pinocchio/fwd.hpp"
 #include <OsqpEigen/OsqpEigen.h>
 #include <iostream>
 #include <iomanip>
@@ -16,7 +17,8 @@
 
 namespace sqpcpu {
 
-    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start) : N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start) {
+    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps) : 
+        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps) {
 
         pinocchio::urdf::buildModel(urdf_filename, model);
         data = pinocchio::Data(model);
@@ -41,7 +43,6 @@ namespace sqpcpu {
         deepos_tmp.resize(3, nq);
         Q_cost_joint_err_tmp.resize(nq, nq);
         fext = pinocchio::container::aligned_vector<pinocchio::Force>(model.njoints, pinocchio::Force::Zero());
-        fext_timesteps = 4;
 
         // top left corner of A_k is I
         A_k.topLeftCorner(nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
@@ -139,6 +140,7 @@ namespace sqpcpu {
         for (int i = 0; i < N-1; i++) {
             int xu_stride = nx + nu;
             bool usefext = i < fext_timesteps;
+            // std::cout << "usefext: " << usefext << " fext_timesteps: " << fext_timesteps << std::endl;
             compute_dynamics_jacobians(
                 XU.segment(i*xu_stride, nq),
                 XU.segment(i*xu_stride + nq, nv),
@@ -153,11 +155,12 @@ namespace sqpcpu {
         }
     }
 
-    void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext) {
+    void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext, float dt) {
+        if (dt == 0.0) { dt = this->dt; }
         if (usefext) {
-            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, fext);
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, fext, pinocchio::Convention::WORLD);
         } else {
-            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, pinocchio::Convention::WORLD);
         }
         
         auto qnext = pinocchio::integrate(model, x.segment(0, nq), x.segment(nq, nv) * dt);
@@ -253,14 +256,14 @@ namespace sqpcpu {
         float cost_new, CV_new, merit_new;
 
         float basecost = eepos_cost(XU, eepos_g);
-        float baseCV = integrator_err(XU);
+        float baseCV = integrator_err(XU) + (XU.segment(0, nx) - xs).norm();
         float basemerit = basecost + mu * baseCV;
 
         // XU_new_tmp = XU;
         for (int i = 0; i < 8; i++) {
             XU_new_tmp = XU + alpha * (XU_full - XU);
             cost_new = eepos_cost(XU_new_tmp, eepos_g);
-            CV_new = integrator_err(XU_new_tmp);
+            CV_new = integrator_err(XU_new_tmp) + (XU_new_tmp.segment(0, nx) - xs).norm();
             merit_new = cost_new + mu * CV_new;
             if (merit_new < basemerit) {
                 return alpha;

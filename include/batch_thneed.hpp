@@ -34,9 +34,9 @@ private:
 class BatchThneed {
 public:
     BatchThneed(const std::string& urdf_filename, int batch_size, int N = 32, 
-                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0);
+                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0);
     
-    int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len;
+    int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len, fext_timesteps;
     float dt;
 
     void batch_sqp(const std::vector<Eigen::VectorXd>& xs_batch, 
@@ -45,6 +45,8 @@ public:
     void batch_update_xs(const std::vector<Eigen::VectorXd>& xs_batch);
 
     void batch_set_fext(const std::vector<Eigen::Vector3d>& fext_batch);
+
+    std::vector<Eigen::VectorXd> predict_fwd(const Eigen::VectorXd& xs, const Eigen::VectorXd& u, float dt);
     
     std::vector<Eigen::VectorXd> get_results() const;
 
