@@ -34,7 +34,7 @@ private:
 class BatchThneed {
 public:
     BatchThneed(const std::string& urdf_filename, int batch_size, int N = 32, 
-                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0);
+                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0, float dQ_cost = 0.01, float R_cost = 1e-5, float QN_cost = 100.0);
     
     int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len, fext_timesteps;
     float dt;

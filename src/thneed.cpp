@@ -17,8 +17,8 @@
 
 namespace sqpcpu {
 
-    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps) : 
-        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps) {
+    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps, float dQ_cost, float R_cost, float QN_cost) : 
+        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost) {
 
         pinocchio::urdf::buildModel(urdf_filename, model);
         data = pinocchio::Data(model);

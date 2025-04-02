@@ -18,7 +18,7 @@ namespace sqpcpu {
 class Thneed {
 public:
 
-    Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0);
+    Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0, float dQ_cost=0.01, float R_cost=1e-5, float QN_cost=100);
     
     void initialize_matrices();
     void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext=false);
@@ -38,7 +38,7 @@ public:
     pinocchio::Model model;
     pinocchio::Data data;
     int N, nq, nv, nx, nu, nxu, traj_len, max_qp_iters, fext_timesteps;
-    double dt, dQ_cost = 0.01, R_cost = 1e-5, QN_cost = 100, eps = 1.0;
+    float dt, dQ_cost, R_cost, QN_cost, eps=1.0;
     bool regularize = false;
     bool osqp_warm_start;
     pinocchio::container::aligned_vector<pinocchio::Force> fext;

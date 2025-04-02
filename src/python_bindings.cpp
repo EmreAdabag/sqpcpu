@@ -37,14 +37,17 @@ PYBIND11_MODULE(pysqpcpu, m) {
         .def_readonly("traj_len", &sqpcpu::Thneed::traj_len);
 
     py::class_<sqpcpu::BatchThneed>(m, "BatchThneed")
-        .def(py::init<const std::string&, int, int, float, int, int, int>(),
+        .def(py::init<const std::string&, int, int, float, int, int, int, float, float, float>(),
              py::arg("urdf_filename"),
              py::arg("batch_size"),
              py::arg("N") = 32,
              py::arg("dt") = 0.01,
              py::arg("max_qp_iters") = 1,
              py::arg("num_threads") = 0,
-             py::arg("fext_timesteps") = 0)
+             py::arg("fext_timesteps") = 0,
+             py::arg("dQ_cost") = 0.01,
+             py::arg("R_cost") = 1e-5,
+             py::arg("QN_cost") = 100.0)
         .def("batch_sqp", &sqpcpu::BatchThneed::batch_sqp,
              py::arg("xs_batch"),
              py::arg("eepos_g_batch"))

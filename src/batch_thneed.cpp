@@ -4,7 +4,7 @@
 namespace sqpcpu {
 
 BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N, 
-                         float dt, int max_qp_iters, int num_threads, int fext_timesteps) 
+                         float dt, int max_qp_iters, int num_threads, int fext_timesteps, float dQ_cost, float R_cost, float QN_cost) 
     : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads), fext_timesteps(fext_timesteps) {
     
     // Initialize thread pool with specified number of threads or default to hardware concurrency
@@ -14,7 +14,7 @@ BatchThneed::BatchThneed(const std::string& urdf_filename, int batch_size, int N
     // Create the specified number of Thneed solvers
     solvers.reserve(batch_size);
     for (int i = 0; i < batch_size; i++) {
-        solvers.emplace_back(urdf_filename, N, dt, max_qp_iters, true, fext_timesteps);
+        solvers.emplace_back(urdf_filename, N, dt, max_qp_iters, true, fext_timesteps, dQ_cost, R_cost, QN_cost);
     }
 
     nx = solvers[0].nx;
