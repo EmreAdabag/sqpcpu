@@ -1,5 +1,6 @@
 #include "../include/thneed.hpp"
 #include "pinocchio/parsers/urdf.hpp"
+#include "pinocchio/parsers/mjcf.hpp"
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/aba.hpp"
@@ -12,23 +13,43 @@
 #include <iostream>
 #include <iomanip>
 #include <sys/time.h>
+#include <cmath>
+#define VERBOSE 0
 
-#define EEPOS_JOINT_ID 6
 
 namespace sqpcpu {
 
-    Thneed::Thneed(const std::string& urdf_filename, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps, float dQ_cost, float R_cost, float QN_cost) : 
-        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost) {
+    Thneed::Thneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps, float dQ_cost, float R_cost, float QN_cost, float Qlim_cost, bool regularize_cost, float discount_factor) : 
+        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost), Qlim_cost(Qlim_cost), regularize_cost(regularize_cost), discount_factor(discount_factor) {
 
-        pinocchio::urdf::buildModel(urdf_filename, model);
+        if (urdf_filename.empty()) {
+            pinocchio::mjcf::buildModel(xml_filename, model);
+        } else {
+            pinocchio::urdf::buildModel(urdf_filename, model);
+        }
         data = pinocchio::Data(model);
+        joint_limits_lower = model.lowerPositionLimit;
+        joint_limits_upper = model.upperPositionLimit;
+
+        eepos_joint_id = 6; // just used for setting external forces
+        eepos_frame_id = model.getFrameId(eepos_frame_name);
+        if (VERBOSE) {
+            std::cout << "eepos_frame_id: " << eepos_frame_id << std::endl;
+            std::cout << "joint limits lower size: " << joint_limits_lower.size() << std::endl;
+            std::cout << "joint limits upper size: " << joint_limits_upper.size() << std::endl;
+            std::cout << "joint limits lower: " << joint_limits_lower.transpose() << std::endl;
+            std::cout << "joint limits upper: " << joint_limits_upper.transpose() << std::endl;
+        }
         
         nq = model.nq;
         nv = model.nv;
         nx = nq + nv;
-        nu = model.joints.size() - 1;
+        nu = model.njoints - 1; // unclear where this comes from
         nxu = nx + nu;
         traj_len = (nx + nu) * N - nu;
+        if (VERBOSE) {
+            std::cout << "nq, nv, nu: " << nq << ", " << nv << ", " << nu << std::endl;
+        }
 
         A_k.resize(nx, nx);
         B_k.resize(nx, nu);
@@ -65,6 +86,12 @@ namespace sqpcpu {
         solver.data()->setLowerBound(l);
         solver.data()->setUpperBound(l);
         solver.initSolver();
+    }
+
+    void Thneed::reset_solver() {
+        solver.clearSolverVariables();
+        XU.setZero();
+        fext = pinocchio::container::aligned_vector<pinocchio::Force>(model.njoints, pinocchio::Force::Zero());
     }
 
     void Thneed::initialize_matrices() {
@@ -158,9 +185,9 @@ namespace sqpcpu {
     void Thneed::fwd_euler(const Eigen::VectorXd& x, const Eigen::VectorXd& u, bool usefext, float dt) {
         if (dt == 0.0) { dt = this->dt; }
         if (usefext) {
-            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, fext, pinocchio::Convention::WORLD);
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, fext);
         } else {
-            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u, pinocchio::Convention::WORLD);
+            pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
         }
         
         auto qnext = pinocchio::integrate(model, x.segment(0, nq), x.segment(nq, nv) * dt);
@@ -169,14 +196,14 @@ namespace sqpcpu {
     }
 
     void Thneed::eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out) {
-        pinocchio::forwardKinematics(model, data, q);
-        eepos_out = data.oMi[EEPOS_JOINT_ID].translation();
+        pinocchio::framesForwardKinematics(model, data, q);
+        eepos_out = data.oMf[eepos_frame_id].translation();
     }
     
     void Thneed::d_eepos(const Eigen::VectorXd& q) {
         pinocchio::computeJointJacobians(model, data, q);
-        deepos_tmp = pinocchio::getJointJacobian(model, data, EEPOS_JOINT_ID, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED).topRows(3);
-        eepos_tmp = data.oMi[EEPOS_JOINT_ID].translation();
+        deepos_tmp = pinocchio::getFrameJacobian(model, data, eepos_frame_id, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED).topRows(3);
+        eepos_tmp = data.oMf[eepos_frame_id].translation();
     }
 
     void Thneed::update_cost_matrix(const Eigen::VectorXd& eepos_g) {
@@ -185,15 +212,22 @@ namespace sqpcpu {
         int block_nnz = nq*nq + nv + nu;
         int Pcsc_offset;
         double* Pcsc_val = Pcsc.valuePtr();
-        // Eigen::VectorXd eepos_err(3);
-        // Eigen::VectorXd joint_err(nq);
+
+        Eigen::MatrixXd joint_err(nq, 1);
+        Eigen::MatrixXd dist_min(nq, 1);
+        Eigen::MatrixXd dist_max(nq, 1);
+        Eigen::VectorXd joint_limit_jac(nq);
 
         for (int i = 0; i < N; i++) {
             Q_cost = i==N-1 ? QN_cost : 1.0;
-
+            
             d_eepos(XU.segment(i*xu_stride, nq));
-            auto joint_err = (eepos_tmp - eepos_g.segment(i*3, 3)).transpose() * deepos_tmp;
-            q.segment(i*xu_stride, nq) = Q_cost * joint_err;
+            
+            joint_err = (eepos_tmp - eepos_g.segment(i*3, 3)).transpose() * deepos_tmp;
+            // dist_min = XU.segment(i*xu_stride, nq) - joint_limits_lower;
+            // dist_max = joint_limits_upper - XU.segment(i*xu_stride, nq);
+            // joint_limit_jac = -dist_min.cwiseInverse() + dist_max.cwiseInverse();
+            q.segment(i*xu_stride, nq) = Q_cost * joint_err; // + Qlim_cost * joint_limit_jac;
             q.segment(i*xu_stride + nq, nv) = dQ_cost * XU.segment(i*xu_stride + nq, nv);
             
             if (i < N-1) {
@@ -212,15 +246,23 @@ namespace sqpcpu {
 
     float Thneed::eepos_cost(const Eigen::VectorXd& xu, const Eigen::VectorXd& eepos_g) {
         float Q_cost, cost = 0;
+        float dist2, stage_cost;
 
         for (int i = 0; i < N; i++) {
             Q_cost = i==N-1 ? QN_cost : 1.0;
+
+            stage_cost = 0.0;
             eepos(xu.segment(i*nxu, nq), eepos_tmp);
-            cost += Q_cost * (eepos_tmp - eepos_g.segment(i*3, 3)).squaredNorm();
-            cost += dQ_cost * xu.segment(i*nxu + nq, nv).squaredNorm();
+            dist2 = (eepos_tmp - eepos_g.segment(i*3, 3)).squaredNorm();
+
+            stage_cost += Q_cost * dist2; // quadratic cost
+            stage_cost += dQ_cost * xu.segment(i*nxu + nq, nv).squaredNorm();
+            // stage_cost += -Qlim_cost * log((xu.segment(i*nxu, nq) - joint_limits_lower).array()).sum();
+            // stage_cost += -Qlim_cost * log((joint_limits_upper - xu.segment(i*nxu, nq)).array()).sum();
             if (i < N-1) {
-                cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
+                stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
             }
+            cost += stage_cost;
         }
         return cost;
     }
@@ -243,7 +285,14 @@ namespace sqpcpu {
         solver.updateLinearConstraintsMatrix(Acsc);
         solver.updateBounds(l, l);
 
-        if (solver.solveProblem() != OsqpEigen::ErrorExitFlag::NoError) {
+        auto errflag = solver.solveProblem();
+        if (VERBOSE) {
+            std::cout << "Solver status: " << static_cast<int>(solver.getStatus()) << std::endl;
+        }
+        if (errflag != OsqpEigen::ErrorExitFlag::NoError) {
+            // print solver status in a way that doesn't require stream operator
+            std::cout << "Solver error: " << static_cast<int>(errflag) << std::endl;
+            std::cout << "Solver status: " << static_cast<int>(solver.getStatus()) << std::endl;
             return false;
         }
         qpsol_tmp = solver.getSolution();
@@ -259,12 +308,19 @@ namespace sqpcpu {
         float baseCV = integrator_err(XU) + (XU.segment(0, nx) - xs).norm();
         float basemerit = basecost + mu * baseCV;
 
+        if (VERBOSE) {
+            std::cout << "basecost: " << basecost << ", baseCV: " << baseCV << ", basemerit: " << basemerit << std::endl;
+        }
+
         // XU_new_tmp = XU;
         for (int i = 0; i < 8; i++) {
             XU_new_tmp = XU + alpha * (XU_full - XU);
             cost_new = eepos_cost(XU_new_tmp, eepos_g);
             CV_new = integrator_err(XU_new_tmp) + (XU_new_tmp.segment(0, nx) - xs).norm();
             merit_new = cost_new + mu * CV_new;
+            if (VERBOSE) {
+                std::cout << "cost_new: " << cost_new << ", CV_new: " << CV_new << ", merit_new: " << merit_new << std::endl;
+            }
             if (merit_new < basemerit) {
                 return alpha;
             }
@@ -274,6 +330,13 @@ namespace sqpcpu {
     }
 
     void Thneed::sqp(const Eigen::VectorXd& xs, const Eigen::VectorXd& eepos_g) {
+
+        if (VERBOSE) {
+            std::cout << "xs: " << xs.transpose() << std::endl;
+            std::cout << "eepos_g: " << eepos_g.transpose() << std::endl;
+            std::cout << "XU: " << XU.transpose() << std::endl;
+        }
+
         float stepsize, alpha;
         for (int i = 0; i < max_qp_iters; i++) {
             if (!setup_solve_osqp(xs, eepos_g)) { continue; }
@@ -300,7 +363,7 @@ namespace sqpcpu {
         pinocchio::Force force(f_ext, Eigen::Vector3d::Zero());
         
         // Apply force at the end effector
-        fext[EEPOS_JOINT_ID] = force;
+        fext[eepos_joint_id] = force;
     }
 
 } // namespace sqpcpu

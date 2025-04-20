@@ -18,7 +18,7 @@ int main(int argc, char ** argv)
   const int num_threads = 4;  // Use 4 threads
   
   // Create a BatchThneed instance
-  sqpcpu::BatchThneed batch_solver(urdf_filename, batch_size, N, dt, max_qp_iters, num_threads);
+  sqpcpu::BatchThneed batch_solver(urdf_filename, "", "end_effector", batch_size, N, dt, max_qp_iters, num_threads);
   
   // Create batch inputs
   std::vector<Eigen::VectorXd> xs_batch;
@@ -28,20 +28,16 @@ int main(int argc, char ** argv)
   int nx = 12;  // This should match the nx from Thneed
   
   // Initialize batch inputs with different values
-  for (int i = 0; i < batch_size; i++) {
-    Eigen::VectorXd xs = Eigen::VectorXd::Zero(nx);
-    Eigen::VectorXd eepos_g = Eigen::VectorXd::Ones(3 * N);
-    
-    xs_batch.push_back(xs);
-    eepos_g_batch.push_back(eepos_g);
-  }
+  Eigen::VectorXd xs = Eigen::VectorXd::Zero(nx);
+  Eigen::VectorXd eepos_g = Eigen::VectorXd::Ones(3 * N);
+  
   
   // Measure execution time
   struct timeval start, end;
   gettimeofday(&start, NULL);
   
   // Run batch SQP
-  batch_solver.batch_sqp(xs_batch, eepos_g_batch);
+  batch_solver.batch_sqp(xs, eepos_g);
   
   gettimeofday(&end, NULL);
   double elapsed = (end.tv_sec - start.tv_sec) * 1000.0;    // sec to ms

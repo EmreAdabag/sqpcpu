@@ -13,10 +13,11 @@ RUN apt-get update && apt-get install -y \
     ros-humble-hpp-fcl \
     ros-humble-urdfdom-headers \
     liburdfdom-headers-dev \
+    libglfw3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pybind11
-RUN pip3 install pybind11
+RUN pip3 install pybind11 mujoco
 
 # Install OSQP and OsqpEigen
 RUN git clone --recursive https://github.com/osqp/osqp && \

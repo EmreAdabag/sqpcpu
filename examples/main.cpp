@@ -9,7 +9,7 @@ int main(int argc, char ** argv)
   
   const std::string urdf_filename = "../urdfs/indy7.urdf";
   
-  sqpcpu::Thneed t(urdf_filename, 32, 0.01, 5);
+  sqpcpu::Thneed t(urdf_filename, "", "end_effector", 32, 0.01, 5);
   t.XU = Eigen::VectorXd::Ones(t.traj_len);
 
   Eigen::VectorXd xs = Eigen::VectorXd::Ones(t.nx);

@@ -8,6 +8,7 @@
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/jacobian.hpp"
+#include "pinocchio/algorithm/frames.hpp"
 #include <OsqpEigen/OsqpEigen.h>
 #include <Eigen/Dense>
 
@@ -18,9 +19,10 @@ namespace sqpcpu {
 class Thneed {
 public:
 
-    Thneed(const std::string& urdf_filename, const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0, float dQ_cost=0.01, float R_cost=1e-5, float QN_cost=100);
+    Thneed(const std::string& urdf_filename="", const std::string& xml_filename="", const std::string& eepos_frame_name="end_effector", const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0, float dQ_cost=0.01, float R_cost=1e-5, float QN_cost=10, float Qlim_cost=0.005, bool regularize_cost=false, float discount_factor=-0.40);
     
     void initialize_matrices();
+    void reset_solver();
     void compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext=false);
     void update_constraint_matrix(const Eigen::VectorXd& xs);
     void setxs(const Eigen::VectorXd& xs);
@@ -37,9 +39,12 @@ public:
 
     pinocchio::Model model;
     pinocchio::Data data;
+    Eigen::VectorXd joint_limits_lower, joint_limits_upper;
+    float joint_limit_margin, Qlim_cost;
+    int eepos_joint_id, eepos_frame_id, elapsed_timesteps;
+    float dt, dQ_cost, R_cost, QN_cost, discount_factor;
     int N, nq, nv, nx, nu, nxu, traj_len, max_qp_iters, fext_timesteps;
-    float dt, dQ_cost, R_cost, QN_cost, eps=1.0;
-    bool regularize = false;
+    bool regularize_cost;
     bool osqp_warm_start;
     pinocchio::container::aligned_vector<pinocchio::Force> fext;
 

@@ -10,11 +10,21 @@ PYBIND11_MODULE(pysqpcpu, m) {
     m.doc() = "Python bindings for the Thneed SQP solver";
     
     py::class_<sqpcpu::Thneed>(m, "Thneed")
-        .def(py::init<const std::string&, const int, const float, const int>(),
-             py::arg("urdf_filename"),
+        .def(py::init<const std::string&, const std::string&, const std::string&, const int, const float, const int, const bool, const int, const float, const float, const float, const float, const bool, const float>(),
+             py::arg("urdf_filename") = "",
+             py::arg("xml_filename") = "",
+             py::arg("eepos_frame_name") = "end_effector",
              py::arg("N") = 32,
              py::arg("dt") = 0.01,
-             py::arg("max_qp_iters") = 1)
+             py::arg("max_qp_iters") = 1,
+             py::arg("osqp_warm_start") = true,
+             py::arg("fext_timesteps") = 0,
+             py::arg("dQ_cost") = 0.01,
+             py::arg("R_cost") = 1e-5,
+             py::arg("QN_cost") = 100.0,
+             py::arg("Qlim_cost") = 0.005,
+             py::arg("regularize_cost") = false,
+             py::arg("discount_factor") = 0.0)
         .def("sqp", &sqpcpu::Thneed::sqp,
              py::arg("xs"),
              py::arg("eepos_g"))
@@ -28,6 +38,7 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("q"))
         .def("set_fext", &sqpcpu::Thneed::set_fext,
              py::arg("f_ext"))
+        .def("reset_solver", &sqpcpu::Thneed::reset_solver)
         .def_readwrite("XU", &sqpcpu::Thneed::XU)
         .def_readonly("nx", &sqpcpu::Thneed::nx)
         .def_readonly("nu", &sqpcpu::Thneed::nu)
@@ -37,8 +48,10 @@ PYBIND11_MODULE(pysqpcpu, m) {
         .def_readonly("traj_len", &sqpcpu::Thneed::traj_len);
 
     py::class_<sqpcpu::BatchThneed>(m, "BatchThneed")
-        .def(py::init<const std::string&, int, int, float, int, int, int, float, float, float>(),
-             py::arg("urdf_filename"),
+        .def(py::init<const std::string&, const std::string&, const std::string&, int, int, float, int, int, int, float, float, float, float, bool, float>(),
+             py::arg("urdf_filename") = "",
+             py::arg("xml_filename") = "",
+             py::arg("eepos_frame_name") = "end_effector",
              py::arg("batch_size"),
              py::arg("N") = 32,
              py::arg("dt") = 0.01,
@@ -47,15 +60,21 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("fext_timesteps") = 0,
              py::arg("dQ_cost") = 0.01,
              py::arg("R_cost") = 1e-5,
-             py::arg("QN_cost") = 100.0)
+             py::arg("QN_cost") = 100.0,
+             py::arg("Qlim_cost") = 0.005,
+             py::arg("regularize_cost") = false,
+             py::arg("discount_factor") = 0.0)
         .def("batch_sqp", &sqpcpu::BatchThneed::batch_sqp,
-             py::arg("xs_batch"),
-             py::arg("eepos_g_batch"))
+             py::arg("xs"),
+             py::arg("eepos_g"))
         .def("batch_update_xs", &sqpcpu::BatchThneed::batch_update_xs,
-             py::arg("xs_batch"))
+             py::arg("xs"))
+        .def("batch_update_primal", &sqpcpu::BatchThneed::batch_update_primal,
+             py::arg("XU"))
         .def("batch_set_fext", &sqpcpu::BatchThneed::batch_set_fext,
              py::arg("fext_batch"))
         .def("get_results", &sqpcpu::BatchThneed::get_results)
+        .def("batch_reset_solvers", &sqpcpu::BatchThneed::batch_reset_solvers)
         .def("eepos", [](sqpcpu::BatchThneed& self, const Eigen::VectorXd& q) {
             Eigen::Vector3d eepos_out;
             self.eepos(q, eepos_out);
