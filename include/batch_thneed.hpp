@@ -34,24 +34,29 @@ private:
 class BatchThneed {
 public:
     BatchThneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int batch_size, int N = 32, 
-                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0, float dQ_cost = 0.01, float R_cost = 1e-5, float QN_cost = 100.0, float Qlim_cost = 0.005, bool regularize_cost = false, float discount_factor = 0.0);
+                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0, float Q_cost = 1.0, float dQ_cost = 0.01, float R_cost = 1e-5, float QN_cost = 100.0, float Qlim_cost = 0.005, float orient_cost = 0.0);
     
     int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len, fext_timesteps;
-    float dt;
-
+    float dt, Q_cost, dQ_cost, R_cost, QN_cost, Qlim_cost, orient_cost;
+    float last_state_cost;
+    
     void batch_sqp(const Eigen::VectorXd& xs, 
                   const Eigen::VectorXd& eepos_g);
     
-    void batch_update_xs(const Eigen::VectorXd& xs);
+    // void batch_update_xs(const Eigen::VectorXd& xs);
 
     void batch_update_primal(const Eigen::VectorXd& XU);
 
-    void batch_set_fext(const std::vector<Eigen::Vector3d>& fext_batch);
+    void batch_set_fext(const std::vector<Eigen::MatrixXd>& fext_batch);
 
     void batch_reset_solvers();
     std::vector<Eigen::VectorXd> predict_fwd(const Eigen::VectorXd& xs, const Eigen::VectorXd& u, float dt);
     
     std::vector<Eigen::VectorXd> get_results() const;
+
+    void update_goal_orientation(const Eigen::Matrix3d& goal_orientation);
+    void eepos_and_ori(const Eigen::VectorXd& q, Eigen::Vector3d& out, Eigen::Matrix3d& ori_out);
+    float eepos_cost(const Eigen::VectorXd& XU, const Eigen::VectorXd& eepos_g, int timesteps);
 
     void eepos(const Eigen::VectorXd& q, Eigen::Vector3d& out);
     

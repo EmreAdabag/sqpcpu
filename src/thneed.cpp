@@ -19,8 +19,8 @@
 
 namespace sqpcpu {
 
-    Thneed::Thneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps, float dQ_cost, float R_cost, float QN_cost, float Qlim_cost, bool regularize_cost, float discount_factor) : 
-        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost), Qlim_cost(Qlim_cost), regularize_cost(regularize_cost), discount_factor(discount_factor) {
+    Thneed::Thneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int N, float dt, const int max_qp_iters, const bool osqp_warm_start, const int fext_timesteps, float Q_cost, float dQ_cost, float R_cost, float QN_cost, float Qlim_cost_unused, float orient_cost) : 
+        N(N), dt(dt), max_qp_iters(max_qp_iters), osqp_warm_start(osqp_warm_start), fext_timesteps(fext_timesteps), Q_cost(Q_cost), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost), Qlim_cost_unused(Qlim_cost_unused), orient_cost(orient_cost) {
 
         if (urdf_filename.empty()) {
             pinocchio::mjcf::buildModel(xml_filename, model);
@@ -62,8 +62,17 @@ namespace sqpcpu {
         qpsol_tmp.resize(traj_len);
         XU_new_tmp.resize(traj_len);
         deepos_tmp.resize(3, nq);
+        deepos_ori_tmp.resize(3, nq);
+        eepos_tmp.resize(3);
+        eepos_ori_tmp.resize(3, 3);
+        dpose_tmp.resize(6, nq);
         Q_cost_joint_err_tmp.resize(nq, nq);
         fext = pinocchio::container::aligned_vector<pinocchio::Force>(model.njoints, pinocchio::Force::Zero());
+
+        goal_orientation.resize(3, 3);
+        goal_orientation << 0.707107, 0, -0.707107,
+                            0, 1, 0,
+                            0.707107, 0, 0.707107;
 
         // top left corner of A_k is I
         A_k.topLeftCorner(nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
@@ -138,9 +147,9 @@ namespace sqpcpu {
         Acsc.setFromTriplets(A_triplets.begin(), A_triplets.end());
     }
 
-    void Thneed::setxs(const Eigen::VectorXd& xs) {
-        XU.segment(0, nx) = xs;
-    }
+    // void Thneed::setxs(const Eigen::VectorXd& xs) {
+    //     XU.segment(0, nx) = xs;
+    // }
 
     void Thneed::compute_dynamics_jacobians(const Eigen::VectorXd& q, const Eigen::VectorXd& v, const Eigen::VectorXd& u, bool usefext) {
         if (usefext) {
@@ -196,38 +205,58 @@ namespace sqpcpu {
     }
 
     void Thneed::eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out) {
-        pinocchio::framesForwardKinematics(model, data, q);
-        eepos_out = data.oMf[eepos_frame_id].translation();
+        pinocchio::forwardKinematics(model, data, q);
+        eepos_out = pinocchio::updateFramePlacement(model, data, eepos_frame_id).translation();
+    }
+
+    void Thneed::eepos(const Eigen::VectorXd& q, Eigen::Vector3d& eepos_out, Eigen::Matrix3d& eepos_ori_out) {
+        pinocchio::forwardKinematics(model, data, q);
+        eepos_out = pinocchio::updateFramePlacement(model, data, eepos_frame_id).translation();
+        eepos_ori_out = pinocchio::updateFramePlacement(model, data, eepos_frame_id).rotation();
     }
     
     void Thneed::d_eepos(const Eigen::VectorXd& q) {
-        pinocchio::computeJointJacobians(model, data, q);
-        deepos_tmp = pinocchio::getFrameJacobian(model, data, eepos_frame_id, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED).topRows(3);
+        // pinocchio::computeJointJacobians(model, data, q);
+        pinocchio::computeFrameJacobian(model, data, q, eepos_frame_id, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, dpose_tmp);
+        deepos_tmp = dpose_tmp.topRows(3);
+        deepos_ori_tmp = dpose_tmp.block(3, 0, 3, nq);
         eepos_tmp = data.oMf[eepos_frame_id].translation();
+        eepos_ori_tmp = data.oMf[eepos_frame_id].rotation();
     }
 
+    Eigen::MatrixXd Thneed::compute_rotation_error(const Eigen::Matrix3d& R_current, const Eigen::Matrix3d& R_desired) {
+        // Error rotation matrix: R_e = R_d * R_c^T
+        Eigen::Matrix3d R_error = R_desired * R_current.transpose();
+        // Convert to axis-angle representation using Eigen
+        Eigen::AngleAxisd angle_axis(R_error);
+        return -1.0 * angle_axis.angle() * angle_axis.axis();
+    }
+    
+
     void Thneed::update_cost_matrix(const Eigen::VectorXd& eepos_g) {
-        float Q_cost;
+        float Q_cost_i;
         int xu_stride = nx + nu;
         int block_nnz = nq*nq + nv + nu;
         int Pcsc_offset;
         double* Pcsc_val = Pcsc.valuePtr();
 
         Eigen::MatrixXd joint_err(nq, 1);
+        Eigen::MatrixXd joint_ori_err(nq, 1);
         Eigen::MatrixXd dist_min(nq, 1);
         Eigen::MatrixXd dist_max(nq, 1);
         Eigen::VectorXd joint_limit_jac(nq);
 
         for (int i = 0; i < N; i++) {
-            Q_cost = i==N-1 ? QN_cost : 1.0;
+            Q_cost_i = i==N-1 ? QN_cost : Q_cost;
             
             d_eepos(XU.segment(i*xu_stride, nq));
             
             joint_err = (eepos_tmp - eepos_g.segment(i*3, 3)).transpose() * deepos_tmp;
+            joint_ori_err = compute_rotation_error(eepos_ori_tmp, goal_orientation).transpose() * deepos_ori_tmp;
             // dist_min = XU.segment(i*xu_stride, nq) - joint_limits_lower;
             // dist_max = joint_limits_upper - XU.segment(i*xu_stride, nq);
             // joint_limit_jac = -dist_min.cwiseInverse() + dist_max.cwiseInverse();
-            q.segment(i*xu_stride, nq) = Q_cost * joint_err; // + Qlim_cost * joint_limit_jac;
+            q.segment(i*xu_stride, nq) = Q_cost_i * joint_err + orient_cost * joint_ori_err; // + Qlim_cost * joint_limit_jac;
             q.segment(i*xu_stride + nq, nv) = dQ_cost * XU.segment(i*xu_stride + nq, nv);
             
             if (i < N-1) {
@@ -235,7 +264,7 @@ namespace sqpcpu {
             }
 
             Pcsc_offset = i*block_nnz;
-            Q_cost_joint_err_tmp = Q_cost * joint_err.transpose() * joint_err;
+            Q_cost_joint_err_tmp = Q_cost_i * joint_err.transpose() * joint_err + orient_cost * joint_ori_err * joint_ori_err.transpose();
             std::copy(Q_cost_joint_err_tmp.data(), Q_cost_joint_err_tmp.data() + nq*nq, Pcsc_val + Pcsc_offset);
             std::fill(Pcsc_val + Pcsc_offset + nq*nq, Pcsc_val + Pcsc_offset + nq*nq + nv, dQ_cost);
             if (i < N-1) {
@@ -244,22 +273,25 @@ namespace sqpcpu {
         }
     }
 
-    float Thneed::eepos_cost(const Eigen::VectorXd& xu, const Eigen::VectorXd& eepos_g) {
-        float Q_cost, cost = 0;
+    float Thneed::eepos_cost(const Eigen::VectorXd& xu, const Eigen::VectorXd& eepos_g, int timesteps) {
+        // computes cost for timesteps timesteps
+        if (timesteps == -1) { timesteps = N; }
+        float Q_cost_i, cost = 0;
         float dist2, stage_cost;
 
-        for (int i = 0; i < N; i++) {
-            Q_cost = i==N-1 ? QN_cost : 1.0;
+        for (int i = 0; i < timesteps; i++) {
+            Q_cost_i = i==N-1 ? QN_cost : Q_cost;
 
             stage_cost = 0.0;
-            eepos(xu.segment(i*nxu, nq), eepos_tmp);
+            eepos(xu.segment(i*nxu, nq), eepos_tmp, eepos_ori_tmp);
             dist2 = (eepos_tmp - eepos_g.segment(i*3, 3)).squaredNorm();
-
-            stage_cost += Q_cost * dist2; // quadratic cost
+            
+            stage_cost += Q_cost_i * dist2; // quadratic cost
+            stage_cost += orient_cost * compute_rotation_error(eepos_ori_tmp, goal_orientation).squaredNorm();
             stage_cost += dQ_cost * xu.segment(i*nxu + nq, nv).squaredNorm();
             // stage_cost += -Qlim_cost * log((xu.segment(i*nxu, nq) - joint_limits_lower).array()).sum();
             // stage_cost += -Qlim_cost * log((joint_limits_upper - xu.segment(i*nxu, nq)).array()).sum();
-            if (i < N-1) {
+            if (i < timesteps-1) {
                 stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
             }
             cost += stage_cost;
@@ -337,6 +369,9 @@ namespace sqpcpu {
             std::cout << "XU: " << XU.transpose() << std::endl;
         }
 
+        XU.segment(0, nx) = xs;
+        last_state_cost = eepos_cost(xs, eepos_g, 1); // for stats
+
         float stepsize, alpha;
         for (int i = 0; i < max_qp_iters; i++) {
             if (!setup_solve_osqp(xs, eepos_g)) { continue; }
@@ -352,18 +387,16 @@ namespace sqpcpu {
         }
     }
 
-    void Thneed::set_fext(const Eigen::Vector3d& f_ext) {
-        // Set external force at the end effector in world frame (actual ref frame is the end effector frame)
-        // Clear previous forces
-        for (size_t i = 0; i < fext.size(); ++i) {
-            fext[i] = pinocchio::Force::Zero();
+    void Thneed::set_fext(const Eigen::MatrixXd& f_ext) {
+        // Set external force/torque at each joint in world frame
+        // Create force object with both linear force and torque
+        // Assume f_ext is 6*njoints dimensional vector with [fx,fy,fz,tx,ty,tz] for each joint
+        for (size_t i = 0; i < model.njoints; ++i) {
+            Eigen::Vector3d linear = f_ext.block<3, 1>(0, i);
+            Eigen::Vector3d torque = f_ext.block<3, 1>(3, i);
+            pinocchio::Force force(linear, torque);
+            fext[i] = force;
         }
-        
-        // Create force object (linear force only, no torque)
-        pinocchio::Force force(f_ext, Eigen::Vector3d::Zero());
-        
-        // Apply force at the end effector
-        fext[eepos_joint_id] = force;
     }
 
 } // namespace sqpcpu

@@ -8,7 +8,7 @@ import osqp
 
 
 
-class thneed:
+class Thneed:
 
     def __init__(self, 
         urdf_filename=None, 
@@ -103,10 +103,12 @@ class thneed:
         self.upper_joint_limits = self.model.upperPositionLimit
         self.lower_joint_limits = self.model.lowerPositionLimit
         self.joint_buffer = 0.05
+        self.pos = np.zeros(3)
+        self.ori = np.eye(3)
     
     def reset_solver(self):
         self.XU = np.zeros(self.traj_len)
-        self.osqp.warm_start(x=np.zeros(self.traj_len), y=np.zeros(self.traj_len))
+        self.osqp.warm_start(x=np.zeros(self.traj_len), y=np.zeros(self.N*self.nx))
         # TODO: reset osqp 
 
     def shift_start(self):
@@ -198,9 +200,9 @@ class thneed:
     def eepos(self, q):
         pin.forwardKinematics(self.model, self.data, q)
         fk = pin.updateFramePlacement(self.model, self.data, self.eepos_frame_id)
-        pos = np.array(fk.translation)
-        ori = np.array(fk.rotation)
-        return pos, ori
+        self.pos = np.array(fk.translation)
+        self.ori = np.array(fk.rotation)
+        return self.pos
 
     def d_eepos(self, q):
         # pin.computeJointJacobians(self.model, self.data, q)
@@ -248,11 +250,11 @@ class thneed:
 
             g_start = k*(self.nx + self.nu)
             self.g[g_start : g_start + self.nx] = np.vstack([
-                Q_modified * joint_err.T + self.orient_cost * joint_ori_err.T + self.Qlim_cost * limit_cost,
+                Q_modified * joint_err.T + self.Qlim_cost * limit_cost + self.orient_cost * joint_ori_err.T,
                 (self.dQ_cost * XU_k[self.nq:self.nx]).reshape(-1)
             ]).reshape(-1)
 
-            phessian = Q_modified * np.outer(joint_err, joint_err) + self.orient_cost * np.outer(joint_ori_err, joint_ori_err) + self.Qlim_cost * np.outer(limit_cost, limit_cost)
+            phessian = Q_modified * np.outer(joint_err, joint_err) + self.Qlim_cost * np.outer(limit_cost, limit_cost) + self.orient_cost * np.outer(joint_ori_err, joint_ori_err)
             pos_costs = phessian[np.tril_indices_from(phessian)]
             self.P.data[Pind:Pind+len(pos_costs)] = pos_costs
             Pind += len(pos_costs)
@@ -291,9 +293,9 @@ class thneed:
                 XU_k = XU[k*(self.nx + self.nu) : (k+1)*(self.nx + self.nu)-self.nu]
                 Q_modified = self.QN_cost
             
-            eepos, orientation = self.eepos(XU_k[:self.nq])
+            eepos = self.eepos(XU_k[:self.nq])
             eepos_err = eepos.T - eepos_goals[k*3:(k+1)*3]
-            eorient_err = self.compute_rotation_error(orientation, self.goal_orientation)
+            eorient_err = self.compute_rotation_error(self.ori, self.goal_orientation)
 
             lower_dist = XU_k[:self.nq] - (self.lower_joint_limits - self.joint_buffer)
             upper_dist = (self.upper_joint_limits + self.joint_buffer) - XU_k[:self.nq]
@@ -355,6 +357,13 @@ class thneed:
             return alpha
     
     def sqp(self, xcur, eepos_goals):
+
+        self.XU[0:self.nx] = xcur
+
+        # save last state cost for stats
+        qc, vc, uc = self.eepos_cost(eepos_goals, self.XU, 1)
+        self.last_state_cost = qc + vc + uc
+
         updated = False
         for qp in range(self.max_qp_iters):
 
