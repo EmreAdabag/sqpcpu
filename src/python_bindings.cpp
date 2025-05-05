@@ -10,7 +10,7 @@ PYBIND11_MODULE(pysqpcpu, m) {
     m.doc() = "Python bindings for the Thneed SQP solver";
     
     py::class_<sqpcpu::Thneed>(m, "Thneed")
-        .def(py::init<const std::string&, const std::string&, const std::string&, const int, const float, const int, const bool, const int, const float, const float, const float, const float, const bool, const float>(),
+        .def(py::init<const std::string&, const std::string&, const std::string&, const int, const float, const int, const bool, const int, const float, const float, const float, const float, const float, const float, const float, const float>(),
              py::arg("urdf_filename") = "",
              py::arg("xml_filename") = "",
              py::arg("eepos_frame_name") = "end_effector",
@@ -23,7 +23,9 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("dQ_cost") = 0.01,
              py::arg("R_cost") = 1e-5,
              py::arg("QN_cost") = 100.0,
-             py::arg("Qlim_cost") = 0.0,
+             py::arg("Qpos_cost") = 0.0,
+             py::arg("Qvel_cost") = 0.0,
+             py::arg("Qacc_cost") = 0.0,
              py::arg("orient_cost") = 0.0)
         .def("sqp", &sqpcpu::Thneed::sqp,
              py::arg("xs"),
@@ -54,7 +56,7 @@ PYBIND11_MODULE(pysqpcpu, m) {
         .def_readwrite("goal_orientation", &sqpcpu::Thneed::goal_orientation);
 
     py::class_<sqpcpu::BatchThneed>(m, "BatchThneed")
-        .def(py::init<const std::string&, const std::string&, const std::string&, int, int, float, int, int, int, float, float, float, float, bool, float>(),
+        .def(py::init<const std::string&, const std::string&, const std::string&, int, int, float, int, int, int, float, float, float, float, float, float, float, float>(),
              py::arg("urdf_filename") = "",
              py::arg("xml_filename") = "",
              py::arg("eepos_frame_name") = "end_effector",
@@ -68,7 +70,9 @@ PYBIND11_MODULE(pysqpcpu, m) {
              py::arg("dQ_cost") = 0.01,
              py::arg("R_cost") = 1e-5,
              py::arg("QN_cost") = 100.0,
-             py::arg("Qlim_cost") = 0.005,
+             py::arg("Qpos_cost") = 0.0,
+             py::arg("Qvel_cost") = 0.0,
+             py::arg("Qacc_cost") = 0.0,
              py::arg("orient_cost") = 0.0)
         .def("sqp", &sqpcpu::BatchThneed::batch_sqp,
              py::arg("xs"),

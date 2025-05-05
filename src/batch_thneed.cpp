@@ -4,8 +4,9 @@
 namespace sqpcpu {
 
 BatchThneed::BatchThneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int batch_size, int N, 
-                         float dt, int max_qp_iters, int num_threads, int fext_timesteps, float Q_cost, float dQ_cost, float R_cost, float QN_cost, float Qlim_cost, float orient_cost) 
-    : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads), fext_timesteps(fext_timesteps), Q_cost(Q_cost), dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost), Qlim_cost(Qlim_cost), orient_cost(orient_cost) {
+                         float dt, int max_qp_iters, int num_threads, int fext_timesteps, float Q_cost, float dQ_cost, float R_cost, float QN_cost, float Qpos_cost, float Qvel_cost, float Qacc_cost, float orient_cost) 
+    : batch_size(batch_size), N(N), dt(dt), max_qp_iters(max_qp_iters), num_threads(num_threads), fext_timesteps(fext_timesteps), Q_cost(Q_cost), 
+    dQ_cost(dQ_cost), R_cost(R_cost), QN_cost(QN_cost), Qpos_cost(Qpos_cost), Qvel_cost(Qvel_cost), Qacc_cost(Qacc_cost), orient_cost(orient_cost) {
     
     // Initialize thread pool with specified number of threads or default to hardware concurrency
     int thread_count = (num_threads > 0) ? num_threads : std::thread::hardware_concurrency();
@@ -14,7 +15,7 @@ BatchThneed::BatchThneed(const std::string& urdf_filename, const std::string& xm
     // Create the specified number of Thneed solvers
     solvers.reserve(batch_size);
     for (int i = 0; i < batch_size; i++) {
-        solvers.emplace_back(urdf_filename, xml_filename, eepos_frame_name, N, dt, max_qp_iters, true, fext_timesteps, Q_cost, dQ_cost, R_cost, QN_cost, Qlim_cost, orient_cost);
+        solvers.emplace_back(urdf_filename, xml_filename, eepos_frame_name, N, dt, max_qp_iters, true, fext_timesteps, Q_cost, dQ_cost, R_cost, QN_cost, Qpos_cost, Qvel_cost, Qacc_cost, orient_cost);
     }
 
     nx = solvers[0].nx;
@@ -24,7 +25,7 @@ BatchThneed::BatchThneed(const std::string& urdf_filename, const std::string& xm
     traj_len = solvers[0].traj_len;
 }
 
-void BatchThneed::batch_sqp(const Eigen::VectorXd& xs, 
+bool BatchThneed::batch_sqp(const Eigen::VectorXd& xs, 
                            const Eigen::VectorXd& eepos_g) {
     
     // Validate input sizes
@@ -35,13 +36,16 @@ void BatchThneed::batch_sqp(const Eigen::VectorXd& xs,
     // Create a vector to store futures
     std::vector<std::future<void>> futures;
     futures.reserve(batch_size);
+
+    // Create a vector to store per-solver update results
+    std::vector<bool> updated(batch_size, true);
     
     // Submit tasks to thread pool
     for (int i = 0; i < batch_size; i++) {
         futures.push_back(
             thread_pool->enqueue(
-                [this, i, &xs, &eepos_g]() {
-                    solvers[i].sqp(xs, eepos_g);
+                [this, i, &xs, &eepos_g, &updated]() {
+                    updated[i] = solvers[i].sqp(xs, eepos_g);
                 }
             )
         );
@@ -52,6 +56,13 @@ void BatchThneed::batch_sqp(const Eigen::VectorXd& xs,
         future.get();
     }
     last_state_cost = solvers[0].last_state_cost;
+
+    // Aggregate results
+    bool all_updated = true;
+    for (bool u : updated) {
+        all_updated &= u;
+    }
+    return all_updated;
 }
 
 

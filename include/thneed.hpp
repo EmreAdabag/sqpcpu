@@ -19,7 +19,9 @@ namespace sqpcpu {
 class Thneed {
 public:
 
-    Thneed(const std::string& urdf_filename="", const std::string& xml_filename="", const std::string& eepos_frame_name="end_effector", const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0, float Q_cost=1.0, float dQ_cost=0.01, float R_cost=1e-5, float QN_cost=10, float Qlim_cost_unused=0.005, float orient_cost=0.0);
+    Thneed(const std::string& urdf_filename="", const std::string& xml_filename="", const std::string& eepos_frame_name="end_effector", 
+           const int N=32, const float dt=0.01, const int max_qp_iters=1, const bool osqp_warm_start=true, const int fext_timesteps=0, 
+           float Q_cost=1.0, float dQ_cost=0.01, float R_cost=1e-5, float QN_cost=10, float Qpos_cost=0.0, float Qvel_cost=0.0, float Qacc_cost=0.0, float orient_cost=0.0);
     
     void initialize_matrices();
     void reset_solver();
@@ -35,7 +37,7 @@ public:
     float integrator_err(const Eigen::VectorXd& XU);
     bool setup_solve_osqp(Eigen::VectorXd xs, Eigen::VectorXd eepos_g);
     float linesearch(const Eigen::VectorXd& xs, const Eigen::VectorXd& XU_full, const Eigen::VectorXd& eepos_g);
-    void sqp(const Eigen::VectorXd& xs, const Eigen::VectorXd& eepos_g);
+    bool sqp(const Eigen::VectorXd& xs, const Eigen::VectorXd& eepos_g);
     void set_fext(const Eigen::MatrixXd& f_ext);
 
     pinocchio::Model model;
@@ -43,7 +45,7 @@ public:
     Eigen::VectorXd joint_limits_lower, joint_limits_upper;
     float joint_limit_margin;
     int eepos_joint_id, eepos_frame_id;
-    float dt, Q_cost, dQ_cost, R_cost, QN_cost, Qlim_cost_unused, orient_cost, last_state_cost;
+    float dt, Q_cost, dQ_cost, R_cost, QN_cost, Qpos_cost, Qvel_cost, Qacc_cost, orient_cost, last_state_cost;
     int N, nq, nv, nx, nu, nxu, traj_len, max_qp_iters, fext_timesteps;
     bool osqp_warm_start;
     pinocchio::container::aligned_vector<pinocchio::Force> fext;

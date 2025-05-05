@@ -34,13 +34,13 @@ private:
 class BatchThneed {
 public:
     BatchThneed(const std::string& urdf_filename, const std::string& xml_filename, const std::string& eepos_frame_name, int batch_size, int N = 32, 
-                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0, float Q_cost = 1.0, float dQ_cost = 0.01, float R_cost = 1e-5, float QN_cost = 100.0, float Qlim_cost = 0.005, float orient_cost = 0.0);
+                float dt = 0.01, int max_qp_iters = 1, int num_threads = 0, int fext_timesteps = 0, float Q_cost = 1.0, float dQ_cost = 0.01, float R_cost = 1e-5, float QN_cost = 100.0, float Qpos_cost = 0.0, float Qvel_cost = 0.0, float Qacc_cost = 0.0, float orient_cost = 0.0);
     
     int N, batch_size, num_threads, max_qp_iters, nx, nu, nq, nv, traj_len, fext_timesteps;
-    float dt, Q_cost, dQ_cost, R_cost, QN_cost, Qlim_cost, orient_cost;
+    float dt, Q_cost, dQ_cost, R_cost, QN_cost, Qpos_cost, Qvel_cost, Qacc_cost, orient_cost;
     float last_state_cost;
     
-    void batch_sqp(const Eigen::VectorXd& xs, 
+    bool batch_sqp(const Eigen::VectorXd& xs, 
                   const Eigen::VectorXd& eepos_g);
     
     // void batch_update_xs(const Eigen::VectorXd& xs);

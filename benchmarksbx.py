@@ -32,7 +32,7 @@ class Benchmark():
         dQ_cost = 5e-3
         R_cost = 1e-6
         QN_cost = 0.0
-        Qlim_cost = 0.00
+        Qlim_cost = 0.100
         orient_cost = 0.1
         self.realtime = False
         self.resample_fext = (batch_size > 1)
@@ -95,8 +95,8 @@ class Benchmark():
         self.last_control = np.zeros(self.solver.nu)
         self.fext_batch = self.fext_generator.normal(0.0, 10.0, (batch_size, 3))
         self.fext_batch[0] = np.array([0.0, 0.0, 0.0])
-        if BATCH:
-            self.solver.batch_set_fext(self.fext_batch)
+        # if BATCH:
+        #     self.solver.batch_set_fext(self.fext_batch)
 
         self.realfext = np.array([0.0, 0.0, -5.0]) * (self.usefext)
 
@@ -185,9 +185,9 @@ class Benchmark():
         else:
             viewer = mujoco.viewer.launch_passive(self.model, self.data)
 
-        self.solver.update_goal_orientation(np.array([[ 0., -0.,  1.],
-                                                      [ 0.,  1.,  0.],
-                                                      [-1.,  0.,  0.]]))
+        # self.solver.update_goal_orientation(np.array([[ 0., -0.,  1.],
+        #                                               [ 0.,  1.,  0.],
+        #                                               [-1.,  0.,  0.]]))
         
 
         # warmup

@@ -25,11 +25,13 @@ class Benchmark():
         num_threads = batch_size
         fext_timesteps = 8
         Q_cost = 2.0
-        dQ_cost = 5e-3
+        dQ_cost = 1e-2
         R_cost = 1e-6
         QN_cost = 20.0
-        Qlim_cost = 0.00
-        orient_cost = 0.00
+        Qpos_cost = 0.01
+        Qvel_cost = 0.0 # don't unzero
+        Qacc_cost = 0.01
+        orient_cost = 0.0
         self.realtime = True
         self.resample_fext = (batch_size > 1)
         self.usefext = usefext
@@ -48,20 +50,22 @@ class Benchmark():
             'dQ_cost': dQ_cost,
             'R_cost': R_cost,
             'QN_cost': QN_cost,
-            'Qlim_cost': Qlim_cost,
+            'Qpos_cost': Qpos_cost,
+            'Qvel_cost': Qvel_cost,
+            'Qacc_cost': Qacc_cost,
             'orient_cost': orient_cost,
             'realtime': self.realtime,
             'resample_fext': self.resample_fext,
             'usefext': self.usefext,
             'timestamp': time.strftime('%Y-%m-%d_%H-%M-%S')
         }
-        pickle.dump(config, open(f'stats/{file_prefix}_benchmark_config.pkl', 'wb'))
+        # pickle.dump(config, open(f'stats/{file_prefix}_benchmark_config.pkl', 'wb'))
 
         # solver
         if BATCH:
-            self.solver = BatchThneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", batch_size=batch_size, num_threads=num_threads, N=N, dt=dt, max_qp_iters=max_qp_iters, fext_timesteps=fext_timesteps, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, Qlim_cost=Qlim_cost, orient_cost=orient_cost)
+            self.solver = BatchThneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", batch_size=batch_size, num_threads=num_threads, N=N, dt=dt, max_qp_iters=max_qp_iters, fext_timesteps=fext_timesteps, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, Qpos_cost=Qpos_cost, Qvel_cost=Qvel_cost, Qacc_cost=Qacc_cost, orient_cost=orient_cost)
         else:
-            self.solver = Thneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", N=N, dt=dt, max_qp_iters=max_qp_iters, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, Qlim_cost=Qlim_cost, orient_cost=orient_cost)
+            self.solver = Thneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", N=N, dt=dt, max_qp_iters=max_qp_iters, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, poslim_cost=poslim_cost, vellim_cost=vellim_cost, acclim_cost=acclim_cost, orient_cost=orient_cost)
 
         # mujoco
         # self.model = mujoco.MjModel.from_xml_path(xml_filename)
@@ -91,7 +95,8 @@ class Benchmark():
         self.last_control = np.zeros(self.solver.nu)
         self.fext_batch = self.fext_generator.normal(0.0, 10.0, (batch_size, 3))
         self.fext_batch[0] = np.array([0.0, 0.0, 0.0])
-        self.solver.batch_set_fext(self.fext_batch)
+        if BATCH:
+            self.solver.batch_set_fext(self.fext_batch)
 
         self.realfext = np.array([0.0, 0.0, -5.0]) * (self.usefext)
     
@@ -112,6 +117,8 @@ class Benchmark():
         solves = 0
         total_cost = 0
         total_dist = 0
+        total_ctrl = 0.0
+        total_vel = 0.0
         best_cost = np.inf
         avg_solve_time = 0
         max_solve_time = 0
@@ -141,6 +148,8 @@ class Benchmark():
             # simulate forward with last control
             sim_time = solve_time
             while sim_time > 0:
+                total_ctrl += np.linalg.norm(self.data.ctrl)
+                total_vel += np.linalg.norm(self.data.qvel, ord=1)
                 total_cost += self.solver.eepos_cost(np.hstack((self.data.qpos, self.data.qvel)), self.goal_trace, 1)
                 total_dist += self.dist_to_goal(self.goal_trace[:3])
                 
@@ -187,7 +196,7 @@ class Benchmark():
                 bestctrl = self.solver.XU[self.nx:self.nx+self.nu]
 
             # set control for next step (maybe make this a moving avg so you don't give up gravity comp?)
-            self.data.ctrl = bestctrl * 0.9 + self.last_control * 0.1
+            self.data.ctrl = bestctrl * 0.8 + self.last_control * 0.2
             # self.last_control = self.data.ctrl
 
             # update stats
@@ -204,12 +213,15 @@ class Benchmark():
             'avg_solve_time': avg_solve_time / solves,
             'max_solve_time': max_solve_time,
             'steps': sim_steps,
-            'solves': solves
+            'solves': solves,
+            'total_ctrl': total_ctrl,
+            'total_vel': total_vel
         }
-
+        print(f'average vel: {total_vel / sim_steps}')
+        print(f'average ctrl: {total_ctrl / sim_steps}')
         return stats
 
-    def runBench(self, headless=True):
+    def runBench(self, headless=False):
 
         allstats = {
             'failed': [],
@@ -218,7 +230,9 @@ class Benchmark():
             'best_cost': [],
             'avg_solve_time': [],
             'max_solve_time': [],
-            'steps': []
+            'steps': [],
+            'total_ctrl': [],
+            'total_vel': []
         }
         
         if headless:
@@ -281,15 +295,15 @@ class Benchmark():
         
 
 if __name__ == '__main__':
-    # b = Benchmark(file_prefix='stockcpu_batch1', batch_size=1, usefext=False)
-    # b.runBench()
+    b = Benchmark(file_prefix='stockcpu_batch1', batch_size=1, usefext=False)
+    b.runBench()
     # b = Benchmark(file_prefix='stockcpu_batch1_fext', batch_size=1, usefext=True)
     # b.runBench()
-    b = Benchmark(file_prefix='stockcpu_batch2_fext', batch_size=2, usefext=True)
-    b.runBench()
-    b = Benchmark(file_prefix='stockcpu_batch4_fext', batch_size=4, usefext=True)
-    b.runBench()
-    b = Benchmark(file_prefix='stockcpu_batch8_fext', batch_size=8, usefext=True)
-    b.runBench()
-    b = Benchmark(file_prefix='stockcpu_batch16_fext', batch_size=16, usefext=True)
-    b.runBench()
+    # b = Benchmark(file_prefix='stockcpu_batch2_fext', batch_size=2, usefext=True)
+    # b.runBench()
+    # b = Benchmark(file_prefix='stockcpu_batch4_fext', batch_size=4, usefext=True)
+    # b.runBench()
+    # b = Benchmark(file_prefix='stockcpu_batch8_fext', batch_size=8, usefext=True)
+    # b.runBench()
+    # b = Benchmark(file_prefix='stockcpu_batch16_fext', batch_size=16, usefext=True)
+    # b.runBench()
