@@ -20,13 +20,13 @@ np.set_printoptions(precision=2, suppress=True, formatter={'float': '{:6.2f}'.fo
 FIG8 = False
 
 def figure8():
-    xamplitude = 0.2 # X goes from -xamplitude to xamplitude
+    xamplitude = 0.25 # X goes from -xamplitude to xamplitude
     zamplitude = 0.4 # Z goes from -zamplitude/2 to zamplitude/2
-    period = 18 # seconds
+    period = 6 # seconds
     dt = 0.01 # seconds
-    x = lambda t:  0.5 + 0.1 * np.sin(2*(t + np.pi/4))
+    x = lambda t:  0.5 # + 0.1 * np.sin(2*(t + np.pi/4))
     y = lambda t: xamplitude * np.sin(t)
-    z = lambda t: 0.1 + zamplitude * np.sin(2*t)/2 + zamplitude/2
+    z = lambda t: 0.37 + zamplitude * np.sin(2*t)/2 + zamplitude/2
     timesteps = np.linspace(0, 2*np.pi, int(period/dt))
     points = np.array([[x(t), y(t), z(t)] for t in timesteps]).reshape(-1)
     return points
@@ -37,8 +37,9 @@ class TorqueCalculator():
         # safety factors
         servo_torque_limit_factor = 1.0
         self.applied_torque_factor = 1.0
+        self.fext_factor = 1.0
 
-        self.ip = '160.39.102.27'
+        self.ip = '160.39.102.105'
         self.ecat = EtherCAT(self.ip)
         
         self.servos = [
@@ -73,7 +74,7 @@ class TorqueCalculator():
 
         urdf_filename = "urdfs/indy7_limited.urdf"
 
-        self.batch_size = 2
+        self.batch_size = 1
         self.num_threads = self.batch_size
         self.dt = 0.01
         N = 16
@@ -81,25 +82,25 @@ class TorqueCalculator():
         max_qp_iters = 5
         num_threads = self.batch_size
         if FIG8:
-            Q_cost = 10.0
-            dQ_cost = 1e-2
-            R_cost = 1e-5
-            QN_cost = Q_cost
-            Qpos_cost = 0.01
+            Q_cost = 9.0
+            dQ_cost = 1e-3
+            R_cost = 1e-6
+            QN_cost = 3 * Q_cost
+            Qpos_cost = 0.001
             Qvel_cost = 0.00
-            Qacc_cost = 0.01
-            orient_cost = 1.00
+            Qacc_cost = 0.001
+            orient_cost = 0.01
         else:
-            Q_cost = 10.0
-            dQ_cost = 1e-2
+            Q_cost = 170.0
+            dQ_cost = 0.4
             R_cost = 1e-5
-            QN_cost = 2 * Q_cost
-            Qpos_cost = 0.01
-            Qvel_cost = 0.0
-            Qacc_cost = 0.02
+            QN_cost = 4 * Q_cost
+            Qpos_cost = 1e-5
+            Qvel_cost = 4.0
+            Qacc_cost = 5e-4
             orient_cost = 0.0
         self.resample_fext = 1 and (self.batch_size > 1)
-        self.file_prefix = f'batchctrl_{self.batch_size}_tmp2'
+        self.file_prefix = f'batchctrl_{self.batch_size}_fig8_cut'
 
         self.config = {
             'file_prefix': self.file_prefix,
@@ -144,14 +145,30 @@ class TorqueCalculator():
         else:
             # self.eepos_g = np.tile(np.array([-.1865, 0., 1.328]), self.solver.N)
             self.eepos_g = np.tile(np.array([0.5, -.1865, 0.5]), self.solver.N)
+            
+            self.goals = [
+                np.array([0.5, -.1865, 0.5]),
+                np.array([0.5, 0.3, 0.2]),
+                np.array([0.3, 0.3, 0.8]),
+                np.array([0.6, -0.5, 0.2]),
+                np.array([0., -0.5, 0.8])
+            ]
+            
+            self.eepos_g = np.tile(self.goals[0], self.solver.N)
+            self.goal_idx = 0
+            self.last_goal_switch_time = time.monotonic()
         
-        # self.fext_batch = 50.0 * np.ones((self.batch_size, 3))
-        self.fext_sigma = 3.0
-        self.fext_hist = deque(maxlen=10)
-        self.state_transition_deque = deque(maxlen=10)
-        self.fext_mask = np.zeros((self.batch_size, 6, self.solver.nq))
-        self.fext_mask[:,1,self.solver.nq-1] = 1
+
+        self.fext_sigma = 5.0
+        self.fext_deque = deque(maxlen=1)
+        self.state_transition_deque = deque(maxlen=1)
+        self.fext_mask = np.zeros((self.batch_size, 6, self.solver.nq+1))
+        self.fext_mask[:,0,self.solver.nq] = 1
+        self.fext_mask[:,1,self.solver.nq] = 1
+        self.fext_mask[:,2,self.solver.nq] = 1
         self.fext_batch = np.zeros_like(self.fext_mask)
+        self.best_fext = np.zeros_like(self.fext_mask[0])
+        
         # self.fext_batch[1:] = np.random.normal(self.fext_batch[1:], self.fext_sigma)
         self.fext_batch *= self.fext_mask
         self.solver.batch_set_fext(self.fext_batch)
@@ -183,8 +200,8 @@ class TorqueCalculator():
 
         # Construct rotation matrix
         rotation_matrix = np.column_stack([x_axis, y_axis, z_axis])
-        self.last_rotation = 0.6 * rotation_matrix + 0.4 * self.last_rotation
-        self.solver.update_goal_orientation(self.last_rotation)
+        # self.last_rotation = 0.6 * rotation_matrix + 0.4 * self.last_rotation
+        self.solver.update_goal_orientation(rotation_matrix)
 
     def joint_callback(self):
         if self.start_time is None:
@@ -224,11 +241,11 @@ class TorqueCalculator():
             return 1
 
         if self.last_state_msg_time is not None:
-            step_duration = self.last_state_msg_time - self.msg_time
+            step_duration = self.msg_time - self.last_state_msg_time
 
             torque_mean = (self.torques_tx + self.last_u) / 2
 
-            transition = np.hstack([self.last_xs, torque_mean, self.xs, step_duration, self.msg_time - self.start_time])
+            transition = np.hstack([self.last_xs, torque_mean, self.xs, step_duration, self.msg_time - self.start_time, self.best_fext[:3,6].flatten()])
             self.state_transition_deque.append(transition)
 
             # this is for a test
@@ -251,24 +268,51 @@ class TorqueCalculator():
                     # errors[i] += 1e-3 * np.linalg.norm(self.fext_batch[i]) # regularize
 
             best_tracker_idx = np.argmin(errors)
+            error_weights = 1.0 / errors
+            error_weights /= np.sum(error_weights)
 
             # resample fexts around the best result
             if self.resample_fext:
-                self.fext_hist.append(self.fext_batch[best_tracker_idx])
-                self.fext_batch[:] = np.mean(self.fext_hist, axis=0)
-                self.fext_batch[0] -= self.fext_sigma
-                self.fext_batch[1] += self.fext_sigma
+                weighted_fext = (self.fext_batch * error_weights.reshape(-1,1,1)).sum(axis=0) * self.fext_factor
+                self.fext_deque.append(weighted_fext)
+                self.best_fext = np.mean(self.fext_deque, axis=0)
+                self.fext_batch[:] = self.best_fext
+                self.fext_batch[0,0,6] -= self.fext_sigma
+                self.fext_batch[0,1,6] -= self.fext_sigma
+                self.fext_batch[0,2,6] -= self.fext_sigma
+                self.fext_batch[1,0,6] += self.fext_sigma
+                self.fext_batch[1,1,6] -= self.fext_sigma
+                self.fext_batch[1,2,6] -= self.fext_sigma
+                self.fext_batch[2,0,6] -= self.fext_sigma
+                self.fext_batch[2,1,6] += self.fext_sigma
+                self.fext_batch[2,2,6] -= self.fext_sigma
+                self.fext_batch[3,0,6] += self.fext_sigma
+                self.fext_batch[3,1,6] += self.fext_sigma
+                self.fext_batch[3,2,6] -= self.fext_sigma
+                self.fext_batch[4,0,6] -= self.fext_sigma
+                self.fext_batch[4,1,6] -= self.fext_sigma
+                self.fext_batch[4,2,6] += self.fext_sigma
+                self.fext_batch[5,0,6] += self.fext_sigma
+                self.fext_batch[5,1,6] -= self.fext_sigma
+                self.fext_batch[5,2,6] += self.fext_sigma
+                self.fext_batch[6,0,6] -= self.fext_sigma
+                self.fext_batch[6,1,6] += self.fext_sigma
+                self.fext_batch[6,2,6] += self.fext_sigma
+                self.fext_batch[7,0,6] += self.fext_sigma
+                self.fext_batch[7,1,6] += self.fext_sigma
+                self.fext_batch[7,2,6] += self.fext_sigma
                 self.fext_batch *= self.fext_mask
                 self.solver.batch_set_fext(self.fext_batch)
+                print(np.round(self.best_fext[:3,self.solver.nq],2).T, sep='\t', end='')
+            best_result = (self.solver.get_results() * error_weights.reshape(-1,1)).sum(axis=0)
 
         else:
             best_tracker_idx = 0
+            best_result = self.solver.get_results()[best_tracker_idx]
 
-        print(np.round(self.fext_batch[best_tracker_idx][:3,self.solver.nq-1],2).T, sep='\t', end='')
-        print(f"batch sqp time: {1000 * (e - s)} ms")
+        print(f"\tbatch sqp time: {np.round(1000 * (e - s), 1)} ms", end='')
         
-        best_result = self.solver.get_results()[best_tracker_idx]
-        torques_smoothed = 0.8 * best_result[self.solver.nx:self.solver.nx+6] + 0.2 * self.last_commanded
+        torques_smoothed = best_result[self.solver.nx:self.solver.nx+6] # + 0.2 * self.last_commanded
         torques_nm_applied = self.applied_torque_factor * torques_smoothed.clip(min=self.servo_min_torques, max=self.servo_max_torques)
         servo_torques = np.round(torques_nm_applied / self.torque_constants).astype(int) * self.directions
         self.last_commanded = torques_nm_applied
@@ -298,15 +342,17 @@ class TorqueCalculator():
 
         # record stats
         eepos = self.solver.eepos(self.xs[0:self.solver.nq])
+        if not FIG8:
+            print(np.linalg.norm(self.eepos_g[:3] - eepos).round(2), np.linalg.norm(self.xs[6:]).round(2), end='')
         self.positions.append(eepos)
         self.tracking_errs.append(np.linalg.norm(eepos - self.goal_trace[:3]))
-        if self.spin_ct % 1000 == 0:
+        # if self.spin_ct % 1000 == 0:
+        # exit cond
+        if time.monotonic() - self.start_time > 30.0:
             # save tracking err to a file
             np.save(f'data/tracking_errs_{self.config["file_prefix"]}.npy', np.array(self.tracking_errs))
             np.save(f'data/positions_{self.config["file_prefix"]}.npy', np.array(self.positions))
             np.save(f'data/state_transitions_{self.config["file_prefix"]}.npy', np.array(self.state_transitions))
-        # exit cond
-        if self.spin_ct > 3000:
             return 1
 
         # shift the goal trace
@@ -317,7 +363,19 @@ class TorqueCalculator():
             self.fig8_offset %= len(self.fig8)
             self.last_goal_update = time.monotonic()
             self.eepos_g = self.goal_trace
+        elif not FIG8 and ((np.linalg.norm(self.eepos_g[:3] - eepos) < 0.05 and np.linalg.norm(self.xs[6:]) < 1.0) or (time.monotonic() - self.last_goal_switch_time > 6.0)):
+            if (np.linalg.norm(self.eepos_g[:3] - eepos) < 0.05 and np.linalg.norm(self.xs[6:]) < 1.0):
+                print(f'\ngoal reached\n')
+            else:
+                print(f'\ngoal failed\n')
+            
+            self.goal_idx += 1
+            if self.goal_idx == len(self.goals):
+                return 1
 
+            self.eepos_g = np.tile(self.goals[self.goal_idx], self.solver.N)
+            self.last_goal_switch_time = time.monotonic()
+        print()
 def main(args=None):
     try:
         controller = TorqueCalculator()

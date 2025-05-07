@@ -16,7 +16,7 @@
 #include <cmath>
 #define VERBOSE 0
 
-#define JOINT_LIMIT_BUFFER 0.05
+#define JOINT_LIMIT_BUFFER -0.2
 
 namespace sqpcpu {
 
@@ -268,8 +268,8 @@ namespace sqpcpu {
 
             dist_min = XU.segment(i*xu_stride, step_len) - joint_limits_lower.segment(0, step_len);
             dist_max = joint_limits_upper.segment(0, step_len) - XU.segment(i*xu_stride, step_len);
-            dist_min = dist_min.array().max(1e-6);
-            dist_max = dist_max.array().max(1e-6);
+            dist_min = dist_min.array().max(1e-20);
+            dist_max = dist_max.array().max(1e-20);
             joint_limit_jac = -dist_min.cwiseInverse() + dist_max.cwiseInverse();
 
             // std::cout << "joint_err: " << joint_err.rows() << "x" << joint_err.cols() << std::endl;
@@ -321,16 +321,21 @@ namespace sqpcpu {
 
             dist_min = xu.segment(i*nxu, step_len) - joint_limits_lower.segment(0, step_len);
             dist_max = joint_limits_upper.segment(0, step_len) - xu.segment(i*nxu, step_len);
-            // negative values pulled out before log
-            dist_min = dist_min.cwiseMax(0.001);
-            dist_max = dist_max.cwiseMax(0.001);
 
-            stage_cost += Qpos_cost * (dist_min.segment(0, nq).array().log().sum() + dist_max.segment(0, nq).array().log().sum());
-            stage_cost += Qvel_cost * (dist_min.segment(nq, nv).array().log().sum() + dist_max.segment(nq, nv).array().log().sum());
-            if (i < timesteps-1) {
-                stage_cost += Qacc_cost * (dist_min.segment(nx, nu).array().log().sum() + dist_max.segment(nx, nu).array().log().sum());
-                stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
+            // if any of the dist_min values are less than 0.0001 or dist_max values are less than 0.0001, set the stage cost to big
+            if (dist_min.minCoeff() < 0.0001 || dist_max.minCoeff() < 0.0001) {
+                stage_cost += 1e20;
             }
+            else{
+                stage_cost += -1 * Qpos_cost * (dist_min.segment(0, nq).array().log().sum() + dist_max.segment(0, nq).array().log().sum());
+                stage_cost += -1 * Qvel_cost * (dist_min.segment(nq, nv).array().log().sum() + dist_max.segment(nq, nv).array().log().sum());
+
+                if (i < timesteps-1) {
+                    stage_cost += Qacc_cost * (dist_min.segment(nx, nu).array().log().sum() + dist_max.segment(nx, nu).array().log().sum());
+                    stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
+                }
+            }
+
             cost += stage_cost;
         }
         return cost;
