@@ -57,7 +57,7 @@ class TorqueCalculator(Node):
         # Publish torques
         self.ctrl_msg.header.stamp = self.get_clock().now().to_msg()
         self.ctrl_msg.position = list(self.t.XU[1*(self.t.nx+self.t.nu):1*(self.t.nx+self.t.nu)+self.t.nq])
-        # self.ctrl_m 1sg.velocity = self.joint_velocities
+        self.ctrl_msg.velocity = [0.0] * self.t.nq
         self.ctrl_msg.effort = list(self.t.XU[self.t.nx:(self.t.nx+self.t.nu)])
         self.publisher.publish(self.ctrl_msg)
         # self.get_logger().info(f"Publishing torques: {[round(t, 2) for t in torques]}")

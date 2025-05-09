@@ -1,4 +1,5 @@
 import pinocchio as pin
+import pinocchio.rpy as rpy
 import numpy as np
 np.set_printoptions(linewidth=99999999)
 
@@ -7,9 +8,23 @@ import osqp
 
 
 
-class thneed:
+class Thneed:
 
-    def __init__(self, urdf_filename, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):
+    def __init__(self, 
+        urdf_filename=None, 
+        xml_filename=None, 
+        eepos_frame_name=None, 
+        N=32, 
+        dt=0.01, 
+        max_qp_iters=1, 
+        osqp_warm_start=True,
+        Q_cost=100.0,
+        dQ_cost=0.01,
+        R_cost=1e-5,
+        QN_cost=100.0,
+        Qlim_cost=0.0,
+        orient_cost=0.0
+        ):
         self.stats = {
             'qp_iters': {
                 'values': [],
@@ -28,8 +43,14 @@ class thneed:
             }
         }
         # model things
-        self.model = pin.buildModelFromUrdf(urdf_filename)
+        if urdf_filename is not None:
+            self.model = pin.buildModelFromUrdf(urdf_filename)
+        elif xml_filename is not None:
+            self.model = pin.buildModelFromMJCF(xml_filename)
         self.data = self.model.createData()
+
+        self.eepos_frame_name = eepos_frame_name
+        self.eepos_frame_id = self.model.getFrameId(eepos_frame_name)
 
         # environment
         self.N = N
@@ -45,16 +66,14 @@ class thneed:
         
         # vars
         self.XU = np.zeros(self.traj_len)
-        self.userho = False # EMRE make this reset
-        self.rho = 1e-3
-        self.drho = 1.0
 
         # cost
-        self.dQ_cost = 0.01
-        self.R_cost = 1e-5
-        self.QN_cost = 100
-        self.regularize = False
-        self.eps = 1 # regularization parameter, velocities and controls *= (1 / (abs(norm(q) + eps)))
+        self.Q_cost = Q_cost
+        self.dQ_cost = dQ_cost
+        self.R_cost = R_cost
+        self.QN_cost = QN_cost
+        self.Qlim_cost = Qlim_cost
+        self.orient_cost = orient_cost
 
         
         # sparse matrix templates
@@ -75,16 +94,22 @@ class thneed:
 
         # hyperparameters
         self.max_qp_iters = max_qp_iters
-        self.rho_factor = 1.2
-        self.rho_min = 1e-3
-        self.rho_max = 10
         self.mu = 10.0
     
         # random
         self.gravity = True
-
-    def clean_start(self):
+        # self.goal_orientation = np.array([[-1., -0.,  0.], [ 0., -1., -0.], [ 0.,  0.,  1.]]) # for frame 17 np.array([[-0.71,  0.71,  0.  ], [-0.71, -0.71, -0.  ], [ 0.  , -0.  ,  1.  ]])
+        self.goal_orientation = np.array([[ 0.71,  0.  , -0.71],[-0.  ,  1.  ,  0.  ], [ 0.71, -0.  ,  0.71]])
+        self.upper_joint_limits = self.model.upperPositionLimit
+        self.lower_joint_limits = self.model.lowerPositionLimit
+        self.joint_buffer = 0.05
+        self.pos = np.zeros(3)
+        self.ori = np.eye(3)
+    
+    def reset_solver(self):
         self.XU = np.zeros(self.traj_len)
+        self.osqp.warm_start(x=np.zeros(self.traj_len), y=np.zeros(self.N*self.nx))
+        # TODO: reset osqp 
 
     def shift_start(self):
         self.XU[:-self.nxu] = self.XU[self.nxu:]
@@ -174,48 +199,71 @@ class thneed:
 
     def eepos(self, q):
         pin.forwardKinematics(self.model, self.data, q)
-        return np.array(self.data.oMi[6].translation)
+        fk = pin.updateFramePlacement(self.model, self.data, self.eepos_frame_id)
+        self.pos = np.array(fk.translation)
+        self.ori = np.array(fk.rotation)
+        return self.pos
 
     def d_eepos(self, q):
-        eepos_joint_id = 6
-        pin.computeJointJacobians(self.model, self.data, q)
-        deepos = pin.getJointJacobian(self.model, self.data, eepos_joint_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)[:3, :]
-        eepos = self.data.oMi[6].translation
-        return eepos, deepos
+        # pin.computeJointJacobians(self.model, self.data, q)
+        # Jfull = pin.getFrameJacobian(self.model, self.data, self.eepos_frame_id, pin.ReferenceFrame.WORLD)
+        Jfull = pin.computeFrameJacobian(self.model, self.data, q, self.eepos_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
+        deepos = Jfull[:3, :]
+        dorient = Jfull[3:6, :]
+        eepos = self.data.oMf[self.eepos_frame_id].translation
+        eeorient = self.data.oMf[self.eepos_frame_id].rotation
+        return eepos, deepos, dorient, eeorient
 
+    def compute_rotation_error(self, R_current, R_desired):
+        if 1:
+            # Error rotation matrix: R_e = R_d * R_c^T
+            R_error = R_desired @ R_current.T
+            # Convert to axis-angle representation
+            angle, axis = pin.AngleAxis(R_error).angle, pin.AngleAxis(R_error).axis
+            # The error vector (scaled axis)
+            orientation_error = axis * angle
+            return -orientation_error
+        else:
+            # compute using roll, pitch, yaw
+            euler = rpy.matrixToRpy(R_current)
+            euler_desired = rpy.matrixToRpy(R_desired)
+            return euler - euler_desired
+        
     def update_cost_matrix(self, XU, eepos_g):
         Pind = 0
         for k in range(self.N):
+            Q_modified = self.QN_cost if k==self.N-1 else self.Q_cost
+  
             if k < self.N-1:
                 XU_k = XU[k*(self.nx + self.nu) : (k+1)*(self.nx + self.nu)]
             else:
                 XU_k = XU[k*(self.nx + self.nu) : (k+1)*(self.nx + self.nu)-self.nu]
-            eepos, deepos = self.d_eepos(XU_k[:self.nq])
-            eepos_err = np.array(eepos.T) - eepos_g[k*3:(k+1)*3]
             
-            # cost multipliers
-            dQ_modified = self.dQ_cost if not self.regularize else self.dQ_cost * (1/(abs(np.linalg.norm(eepos_err)) + self.eps))
-            R_modified = self.R_cost if not self.regularize else self.R_cost * (1/(abs(np.linalg.norm(eepos_err)) + self.eps))
-            Q_modified = self.QN_cost if k==self.N-1 else 1
-
+            eepos, deepos, dorient, eeorient = self.d_eepos(XU_k[:self.nq])
+            eepos_err = np.array(eepos.T) - eepos_g[k*3:(k+1)*3]
+            eeorient_err = self.compute_rotation_error(eeorient, self.goal_orientation)
+            
             joint_err = eepos_err @ deepos
+            joint_ori_err = eeorient_err.T @ dorient
+
+            limit_cost = (-1 / (XU_k[:self.nq] - (self.lower_joint_limits - self.joint_buffer))) + (1 / ((self.upper_joint_limits + self.joint_buffer) - XU_k[:self.nq]))
 
             g_start = k*(self.nx + self.nu)
             self.g[g_start : g_start + self.nx] = np.vstack([
-                Q_modified * joint_err.T,
-                (dQ_modified * XU_k[self.nq:self.nx]).reshape(-1)
+                Q_modified * joint_err.T + self.Qlim_cost * limit_cost + self.orient_cost * joint_ori_err.T,
+                (self.dQ_cost * XU_k[self.nq:self.nx]).reshape(-1)
             ]).reshape(-1)
 
-            phessian = Q_modified * np.outer(joint_err, joint_err) + int(self.userho) * self.rho * np.eye(self.nq)
+            phessian = Q_modified * np.outer(joint_err, joint_err) + self.Qlim_cost * np.outer(limit_cost, limit_cost) + self.orient_cost * np.outer(joint_ori_err, joint_ori_err)
             pos_costs = phessian[np.tril_indices_from(phessian)]
             self.P.data[Pind:Pind+len(pos_costs)] = pos_costs
             Pind += len(pos_costs)
-            self.P.data[Pind:Pind+self.nv] = np.full(self.nv, dQ_modified + int(self.userho) * self.rho)
+            self.P.data[Pind:Pind+self.nv] = np.full(self.nv, self.dQ_cost)
             Pind+=self.nv
             if k < self.N-1:
-                self.P.data[Pind:Pind+self.nu] = np.full(self.nu, R_modified + int(self.userho) * self.rho)
+                self.P.data[Pind:Pind+self.nu] = np.full(self.nu, self.R_cost)
                 Pind+=self.nu
-                self.g[g_start + self.nx : g_start + self.nx + self.nu] = R_modified * XU_k[self.nx:self.nx+self.nu].reshape(-1)
+                self.g[g_start + self.nx : g_start + self.nx + self.nu] = self.R_cost * XU_k[self.nx:self.nx+self.nu].reshape(-1)
 
     def setup_and_solve_qp(self, xu, xs, eepos_g):
         self.update_constraint_matrix(xu, xs)
@@ -225,25 +273,41 @@ class thneed:
         self.osqp.update(q=self.g, l=self.l, u=self.l)
         return self.osqp.solve()
     
-    def eepos_cost(self, eepos_goals, XU):
+    # def regularize_orientation_cost(self, eorient_err):
+    #     return 1
+    #     ''' 1 - e^(-sqrt(norm(eorient_err)))'''
+    #     return 1 - np.exp(-5*np.sqrt(np.linalg.norm(eorient_err)))
+
+    def eepos_cost(self, eepos_goals, XU, timesteps=None):
+        # missing squares but not tested
         qcost = 0
         vcost = 0
         ucost = 0
-        dQ_modified = self.dQ_cost if not self.regularize else self.dQ_cost * (1/(abs(np.linalg.norm(eepos_err)) + self.eps))
-        R_modified = self.R_cost if not self.regularize else self.R_cost * (1/(abs(np.linalg.norm(eepos_err)) + self.eps))
-        for k in range(self.N):
+        if timesteps is None:
+            timesteps = self.N
+        for k in range(timesteps):
             if k < self.N-1:
                 XU_k = XU[k*(self.nx + self.nu) : (k+1)*(self.nx + self.nu)]
-                Q_modified = 1
+                Q_modified = self.Q_cost
             else:
                 XU_k = XU[k*(self.nx + self.nu) : (k+1)*(self.nx + self.nu)-self.nu]
                 Q_modified = self.QN_cost
+            
             eepos = self.eepos(XU_k[:self.nq])
             eepos_err = eepos.T - eepos_goals[k*3:(k+1)*3]
-            qcost += Q_modified * np.linalg.norm(eepos_err)
-            vcost += dQ_modified * np.linalg.norm(XU_k[self.nq:self.nx].reshape(-1))
+            eorient_err = self.compute_rotation_error(self.ori, self.goal_orientation)
+
+            lower_dist = XU_k[:self.nq] - (self.lower_joint_limits - self.joint_buffer)
+            upper_dist = (self.upper_joint_limits + self.joint_buffer) - XU_k[:self.nq]
+            lower_dist = np.where(lower_dist <= 0.0, 1e6, lower_dist) # remove negative vals before log
+            upper_dist = np.where(upper_dist <= 0.0, 1e6, upper_dist) # remove negative vals before log
+            limit_cost = -1 * self.Qlim_cost * (np.log(lower_dist) + np.log(upper_dist))
+            qcost += np.sum(limit_cost)
+
+            qcost += Q_modified * np.linalg.norm(eepos_err)**2 + self.orient_cost * np.linalg.norm(eorient_err)**2
+            vcost += self.dQ_cost * np.linalg.norm(XU_k[self.nq:self.nx].reshape(-1))**2
             if k < self.N-1:
-                ucost += R_modified * np.linalg.norm(XU_k[self.nx:self.nx+self.nu].reshape(-1))
+                ucost += self.R_cost * np.linalg.norm(XU_k[self.nx:self.nx+self.nu].reshape(-1))**2
         return qcost, vcost, ucost
 
     def integrator_err(self, XU):
@@ -288,13 +352,18 @@ class thneed:
 
             if fail:
                 alpha = 0.0
-                self.drho = min(self.drho/self.rho_factor, 1 / self.rho_factor)
-                self.rho = max(self.rho*self.drho, self.rho_min)
             
             self.stats['linesearch_alphas']['values'].append(alpha)
             return alpha
     
     def sqp(self, xcur, eepos_goals):
+
+        self.XU[0:self.nx] = xcur
+
+        # save last state cost for stats
+        qc, vc, uc = self.eepos_cost(eepos_goals, self.XU, 1)
+        self.last_state_cost = qc + vc + uc
+
         updated = False
         for qp in range(self.max_qp_iters):
 
@@ -316,68 +385,3 @@ class thneed:
         self.stats['qp_iters']['values'].append(qp+1)
         return not updated
     
-# xpath = []
-# def runeepos():
-#     t = thneed(model)
-#     nq = t.nq
-#     nv = t.nv
-#     nx = t.nx
-#     nu = t.nu
-
-
-#     xstart = np.hstack((np.ones(nq), np.zeros(nv)))
-#     xcur = xstart
-    
-#     # endpoints = [thing.eepos(np.random.rand(6) * 2 - 1.0) for _ in range(3)]
-#     endpoints = np.array([np.array(t.eepos(np.zeros(nq))), np.array(t.eepos(-0.8 * np.ones(nq)))])
-#     print(endpoints)
-#     endpoint_ind = 0
-#     endpoint = endpoints[endpoint_ind]
-#     eepos_goal = np.tile(endpoint, t.N).T
-
-#     XU = np.zeros(t.N*(nx+t.nu)-t.nu)
-#     XU = t.sqp(xcur, eepos_goal, XU)
-
-#     print(f"costs: {t.eepos_cost(eepos_goal, XU)}")
-
-#     for i in range(500):
-        
-#         # which goal are we planning to
-#         cur_eepos = t.eepos(xcur[:nq])
-#         goaldist = np.linalg.norm(cur_eepos - eepos_goal[:3])
-#         if goaldist < 1e-1:
-#             print('switching goals')
-#             endpoint_ind = (endpoint_ind + 1) % len(endpoints)
-#             endpoint = endpoints[endpoint_ind]
-#             eepos_goal = np.tile(endpoint, t.N).T
-#         print(goaldist)
-#         if goaldist > 1.1:
-#             print("breaking on big goal dist")
-#             break
-
-#         xu_new = t.sqp(xcur, eepos_goal, XU)
-        
-#         # print(f"costs: {t.eepos_cost(eepos_goal, XU)}")
-#         trajopt_time = 0.01 # hard coded timestep
-        
-#         # simulate forward using old control
-#         sim_time = trajopt_time
-#         sim_steps = 0    # full steps taken
-#         while sim_time > 0:
-#             timestep = min(sim_time, t.dt)
-#             # print(timestep)
-#             control = XU[sim_steps*(nx+nu)+nx:(sim_steps+1)*(nx+nu)]
-#             xcur = np.vstack(t.rk4(xcur[:nq], xcur[nq:nx], control, timestep)).reshape(-1)
-            
-#             if timestep > 0.5 * t.dt:
-#                 sim_steps += 1
-            
-#             sim_time -= timestep
-#             xpath.append(xcur[:nq])
-#         if sim_steps > 0:
-#             XU[:-(sim_steps)*(nx+nu) or len(XU)] = xu_new[(sim_steps)*(nx+nu):] # update XU with new traj
-#         XU[:nx] = xcur.reshape(-1) # first state is current state
-#         XU[-nx:] = np.hstack([np.ones(nq), np.zeros(nv)]) # last state is 0
-
-#     return endpoints
-# endpoints = runeepos()
