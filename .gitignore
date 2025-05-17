@@ -8,3 +8,11 @@ build*
 *.dylib
 __pycache__
 .vscode
+data/
+venv/
+.vscode/
+data**
+pics
+stats/
+points/
+urdfs/frankapanda/
