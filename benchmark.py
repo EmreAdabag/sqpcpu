@@ -13,17 +13,19 @@ sys.path.append(build_dir)
 from pysqpcpu import Thneed, BatchThneed
 # from pinocchio_template import Thneed
 
+np.set_printoptions(precision=3, suppress=True)
+np.set_printoptions(linewidth=1000)
+
 BATCH = True
 
 class Benchmark():
-    def __init__(self, file_prefix='', batch_size=1, usefext=False):
+    def __init__(self, file_prefix='', batch_size=1, N=16, usefext=False):
         # xml_filename = "urdfs/frankapanda/mjx_panda.xml"
         urdf_filename = "urdfs/indy7.urdf"
-        N = 16
         dt = 0.01
-        max_qp_iters = 4
+        max_qp_iters = 5
         num_threads = batch_size
-        fext_timesteps = 8
+        fext_timesteps = 0
         Q_cost = 2.0
         dQ_cost = 1e-2
         R_cost = 1e-6
@@ -33,9 +35,12 @@ class Benchmark():
         Qacc_cost = 0.01
         orient_cost = 0.0
         self.realtime = True
-        self.resample_fext = (batch_size > 1)
+        self.resample_fext = 0 and (batch_size > 1)
         self.usefext = usefext
         self.file_prefix = file_prefix
+
+
+        print(f"REALTIME: {self.realtime}")
 
         config = {
             'file_prefix': file_prefix,
@@ -63,7 +68,7 @@ class Benchmark():
 
         # solver
         if BATCH:
-            self.solver = BatchThneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", batch_size=batch_size, num_threads=num_threads, N=N, dt=dt, max_qp_iters=max_qp_iters, fext_timesteps=fext_timesteps, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, Qpos_cost=Qpos_cost, Qvel_cost=Qvel_cost, Qacc_cost=Qacc_cost, orient_cost=orient_cost)
+            self.solver = BatchThneed(urdf_filename=urdf_filename, eepos_frame_name="link6", batch_size=batch_size, num_threads=num_threads, N=N, dt=dt, max_qp_iters=max_qp_iters, fext_timesteps=fext_timesteps, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, Qpos_cost=Qpos_cost, Qvel_cost=Qvel_cost, Qacc_cost=Qacc_cost, orient_cost=orient_cost)
         else:
             self.solver = Thneed(urdf_filename=urdf_filename, eepos_frame_name="end_effector", N=N, dt=dt, max_qp_iters=max_qp_iters, Q_cost=Q_cost, dQ_cost=dQ_cost, R_cost=R_cost, QN_cost=QN_cost, poslim_cost=poslim_cost, vellim_cost=vellim_cost, acclim_cost=acclim_cost, orient_cost=orient_cost)
 
@@ -93,9 +98,12 @@ class Benchmark():
         self.xs = np.zeros(self.solver.nx)
         self.dist_to_goal = lambda goal_point: np.linalg.norm(self.solver.eepos(self.xs[:self.nq]) - goal_point[:3])
         self.last_control = np.zeros(self.solver.nu)
-        self.fext_batch = self.fext_generator.normal(0.0, 10.0, (batch_size, 3))
-        self.fext_batch[0] = np.array([0.0, 0.0, 0.0])
-        if BATCH:
+        self.fext_mask = np.zeros((batch_size, 6, self.solver.nq+1))
+        self.fext_mask[:,0,self.solver.nq] = 1
+        self.fext_mask[:,1,self.solver.nq] = 1
+        self.fext_mask[:,2,self.solver.nq] = 1
+        self.fext_batch = np.zeros_like(self.fext_mask)
+        if self.usefext:
             self.solver.batch_set_fext(self.fext_batch)
 
         self.realfext = np.array([0.0, 0.0, -5.0]) * (self.usefext)
@@ -126,7 +134,7 @@ class Benchmark():
         self.goal_trace = np.tile(self.eepos_zero, self.solver.N)
         goal_set = False
         
-        while sim_steps < 1000:
+        while sim_steps < 2000:
             if (self.dist_to_goal(goal_point) < 5e-2 and np.linalg.norm(self.data.qvel, ord=1) < 1.0):
                 print(f'Got to goal in {sim_steps} steps')
                 break
@@ -140,10 +148,10 @@ class Benchmark():
             self.xs = np.hstack((self.data.qpos, self.data.qvel))
 
             # solve
-            solvestart = time.time()
+            solvestart = time.monotonic()
             self.solver.sqp(self.xs, self.goal_trace)
-            solve_time = time.time() - solvestart
-
+            solve_time = time.monotonic() - solvestart
+            # print(f"Solve time: {1000 * solve_time} ms")
 
             # simulate forward with last control
             sim_time = solve_time
@@ -176,6 +184,7 @@ class Benchmark():
             # get best control
             if BATCH:
                 r = self.solver.get_results()
+                # print(np.array(r)[:,12:18])
                 predictions = self.solver.predict_fwd(self.xs, self.data.ctrl, self.model.opt.timestep * math.ceil(solve_time / self.model.opt.timestep))
 
                 best_tracker = None
@@ -196,7 +205,7 @@ class Benchmark():
                 bestctrl = self.solver.XU[self.nx:self.nx+self.nu]
 
             # set control for next step (maybe make this a moving avg so you don't give up gravity comp?)
-            self.data.ctrl = bestctrl * 0.8 + self.last_control * 0.2
+            self.data.ctrl = bestctrl * 0.85 # + self.last_control * 0.2
             # self.last_control = self.data.ctrl
 
             # update stats
@@ -221,7 +230,7 @@ class Benchmark():
         print(f'average ctrl: {total_ctrl / sim_steps}')
         return stats
 
-    def runBench(self, headless=False):
+    def runBench(self, headless=True):
 
         allstats = {
             'failed': [],
@@ -244,8 +253,8 @@ class Benchmark():
         
 
         # warmup
-        for _ in range(10):
-            self.solver.sqp(self.xs, self.goal_trace)
+        # for _ in range(10):
+        #     self.solver.sqp(self.xs, self.goal_trace)
         
         for i in tqdm(range(len(self.points)-1)):
             print(f'Point{i}: {self.points[i]}, {self.points[i+1]}')
@@ -280,9 +289,9 @@ class Benchmark():
             allstats['steps'].append(leg1['steps'] + leg2['steps'] + leg3['steps'])
             
             # save stats
-            if i % 20 == 0:
-                pickle.dump(allstats, open(f'stats/{self.file_prefix}_stats_{i}.pkl', 'wb'))
-            if i==20:
+            # if i % 20 == 0:
+            #     pickle.dump(allstats, open(f'stats/{self.file_prefix}_stats_{i}.pkl', 'wb'))
+            if i==50:
                 break
         pickle.dump(allstats, open(f'stats/{self.file_prefix}_stats_final.pkl', 'wb'))
 
@@ -295,15 +304,8 @@ class Benchmark():
         
 
 if __name__ == '__main__':
-    b = Benchmark(file_prefix='stockcpu_batch1', batch_size=1, usefext=False)
-    b.runBench()
-    # b = Benchmark(file_prefix='stockcpu_batch1_fext', batch_size=1, usefext=True)
-    # b.runBench()
-    # b = Benchmark(file_prefix='stockcpu_batch2_fext', batch_size=2, usefext=True)
-    # b.runBench()
-    # b = Benchmark(file_prefix='stockcpu_batch4_fext', batch_size=4, usefext=True)
-    # b.runBench()
-    # b = Benchmark(file_prefix='stockcpu_batch8_fext', batch_size=8, usefext=True)
-    # b.runBench()
-    # b = Benchmark(file_prefix='stockcpu_batch16_fext', batch_size=16, usefext=True)
-    # b.runBench()
+
+    combos = [(8,32), (1,64)]
+    for batch_size, N in combos:
+        b = Benchmark(file_prefix=f'stockcpu_batch{batch_size}_{N}', batch_size=batch_size, N=N, usefext=False)
+        b.runBench()

@@ -241,7 +241,7 @@
     <parent link="link6"/>
     <child link="tcp"/>
     <!-- <origin xyz="0 0 0.06" rpy="0 0 0"/> -->
-    <origin rpy="0.0                         0.0                         0.0" xyz="0.0                          0.0                          0.06"/>
+    <origin rpy="0.0                         0.0                         0.0" xyz="0.0                          0.0                          0.0"/>
   </joint>
     <link name="end_effector">
     <visual>

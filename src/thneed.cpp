@@ -16,7 +16,7 @@
 #include <cmath>
 #define VERBOSE 0
 
-#define JOINT_LIMIT_BUFFER -0.2
+#define JOINT_LIMIT_BUFFER -0.1
 
 namespace sqpcpu {
 
@@ -207,7 +207,7 @@ namespace sqpcpu {
         } else {
             pinocchio::aba(model, data, x.segment(0, nq), x.segment(nq, nv), u);
         }
-        
+
         auto qnext = pinocchio::integrate(model, x.segment(0, nq), x.segment(nq, nv) * dt);
         auto vnext = x.segment(nq, nv) + data.ddq * dt;
         xnext_tmp << qnext, vnext;
@@ -268,8 +268,8 @@ namespace sqpcpu {
 
             dist_min = XU.segment(i*xu_stride, step_len) - joint_limits_lower.segment(0, step_len);
             dist_max = joint_limits_upper.segment(0, step_len) - XU.segment(i*xu_stride, step_len);
-            dist_min = dist_min.array().max(1e-20);
-            dist_max = dist_max.array().max(1e-20);
+            dist_min = dist_min.array().max(1e-6);
+            dist_max = dist_max.array().max(1e-6);
             joint_limit_jac = -dist_min.cwiseInverse() + dist_max.cwiseInverse();
 
             // std::cout << "joint_err: " << joint_err.rows() << "x" << joint_err.cols() << std::endl;
@@ -322,18 +322,16 @@ namespace sqpcpu {
             dist_min = xu.segment(i*nxu, step_len) - joint_limits_lower.segment(0, step_len);
             dist_max = joint_limits_upper.segment(0, step_len) - xu.segment(i*nxu, step_len);
 
-            // if any of the dist_min values are less than 0.0001 or dist_max values are less than 0.0001, set the stage cost to big
-            if (dist_min.minCoeff() < 0.0001 || dist_max.minCoeff() < 0.0001) {
-                stage_cost += 1e20;
-            }
-            else{
-                stage_cost += -1 * Qpos_cost * (dist_min.segment(0, nq).array().log().sum() + dist_max.segment(0, nq).array().log().sum());
-                stage_cost += -1 * Qvel_cost * (dist_min.segment(nq, nv).array().log().sum() + dist_max.segment(nq, nv).array().log().sum());
+            dist_min = dist_min.cwiseMax(1e-10);
+            dist_max = dist_max.cwiseMax(1e-10);
 
-                if (i < timesteps-1) {
-                    stage_cost += Qacc_cost * (dist_min.segment(nx, nu).array().log().sum() + dist_max.segment(nx, nu).array().log().sum());
-                    stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
-                }
+            // if any of the dist_min values are less than 0.0001 or dist_max values are less than 0.0001, set the stage cost to big
+            stage_cost += -1 * Qpos_cost * (dist_min.segment(0, nq).array().log().sum() + dist_max.segment(0, nq).array().log().sum());
+            stage_cost += -1 * Qvel_cost * (dist_min.segment(nq, nv).array().log().sum() + dist_max.segment(nq, nv).array().log().sum());
+
+            if (i < timesteps-1) {
+                stage_cost += -1 * Qacc_cost * (dist_min.segment(nx, nu).array().log().sum() + dist_max.segment(nx, nu).array().log().sum());
+                stage_cost += R_cost * xu.segment(i*nxu + nx, nu).squaredNorm();
             }
 
             cost += stage_cost;
@@ -346,7 +344,7 @@ namespace sqpcpu {
         for (int i = 0; i < N-1; i++) {
             bool usefext = i < fext_timesteps;
             fwd_euler(xu.segment(i*nxu, nx), xu.segment(i*nxu+nx, nu), usefext);
-            err += (xnext_tmp - xu.segment((i+1)*nxu, nx)).norm();
+            err += (xnext_tmp - xu.segment((i+1)*nxu, nx)).lpNorm<1>();
         }
         return err;
     }
@@ -385,7 +383,7 @@ namespace sqpcpu {
         float cost_new, CV_new, merit_new;
 
         float basecost = eepos_cost(XU, eepos_g);
-        float baseCV = integrator_err(XU) + (XU.segment(0, nx) - xs).norm();
+        float baseCV = integrator_err(XU) + (XU.segment(0, nx) - xs).lpNorm<1>();
         float basemerit = basecost + mu * baseCV;
 
         if (VERBOSE) {
@@ -396,7 +394,7 @@ namespace sqpcpu {
         for (int i = 0; i < 8; i++) {
             XU_new_tmp = XU + alpha * (XU_full - XU);
             cost_new = eepos_cost(XU_new_tmp, eepos_g);
-            CV_new = integrator_err(XU_new_tmp) + (XU_new_tmp.segment(0, nx) - xs).norm();
+            CV_new = integrator_err(XU_new_tmp) + (XU_new_tmp.segment(0, nx) - xs).lpNorm<1>();
             merit_new = cost_new + mu * CV_new;
             if (VERBOSE) {
                 std::cout << "cost_new: " << cost_new << ", CV_new: " << CV_new << ", merit_new: " << merit_new << std::endl;
@@ -428,11 +426,11 @@ namespace sqpcpu {
             alpha = linesearch(xs, qpsol_tmp, eepos_g);
             if (alpha == 0.0) { continue; }
 
-            stepsize = alpha * (qpsol_tmp - XU).norm();
             XU = XU + alpha * (qpsol_tmp - XU);
-            if (stepsize < 1e-3) {
-                break;
-            }
+            // stepsize = alpha * (qpsol_tmp - XU).norm();
+            // if (stepsize < 1e-3) {
+            //     break;
+            // }
         }
         return updated;
     }

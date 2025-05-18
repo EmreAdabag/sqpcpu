@@ -8,7 +8,7 @@ endif()
 
 # Set compiler flags
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -fPIC -fsanitize=address -fno-omit-frame-pointer")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fPIC -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -fPIC -DNDEBUG -ffast-math")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 
